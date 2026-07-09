@@ -54,7 +54,7 @@ say() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 # ---- 1. packages ----
 say "Installing packages (slurm-wlm, munge, msmtp, bsd-mailx)"
 $SUDO apt-get update -qq
-$SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+$SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   slurm-wlm slurmd slurmctld munge msmtp msmtp-mta bsd-mailx
 
 # ---- 2. munge ----
@@ -206,7 +206,7 @@ sinfo
 # ---- 8. mail self-test (as the slurm user = the real slurm path) ----
 say "Sending a mail self-test as the 'slurm' user"
 echo "setup-slurm mail self-test from $(hostname) at $(date)" \
-  | $SUDO -u slurm mail -s "[slurm] mail self-test on $(hostname -s)" "$EMAIL" \
+  | ${SUDO:-sudo} -u slurm mail -s "[slurm] mail self-test on $(hostname -s)" "$EMAIL" \
   && echo "mail command exited 0"
 sleep 2
 echo "--- tail /var/log/msmtp ---"; $SUDO tail -3 /var/log/msmtp
