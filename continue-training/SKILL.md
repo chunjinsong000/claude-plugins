@@ -1,6 +1,6 @@
 ---
 name: continue-training
-description: Continue/resume a Wan2.2-S2V LoRA training run from its latest (or a chosen) checkpoint. Generates a new `..._leo_<N+1>.sh` SLURM script that resumes via --lora_checkpoint with a configurable --skip_frames, following the project's `_cont<STEP>_SF<SF>` convention. Use when the user says "continue training X", "resume the run with skip frames N", or "pick up from the latest checkpoint".
+description: Continue/resume a Wan2.2-S2V LoRA training run from its latest (or a chosen) checkpoint. Generates a new `..._leo_<N+1>.sh` SLURM script that resumes via --lora_checkpoint with a configurable --skip_frames, following the project's `_cont<STEP>_SF<SF>` convention. Can also queue the continuation behind a still-running job (--depends-on) and resolve the newest checkpoint at launch time (--runtime-latest). Use when the user says "continue training X", "resume the run with skip frames N", "pick up from the latest checkpoint", or "queue a continuation behind the current job".
 ---
 
 # Continue a training run
@@ -35,7 +35,9 @@ Use the helper (don't hand-edit unless the base script is unusual):
 python3 .claude/skills/continue-training/continue_training.py \
   --base <path/to/base_leo_N.sh> \
   --skip-frames <N> \
-  [--step <STEP>]        # default: latest checkpoint \
+  [--step <STEP>]        # default: latest checkpoint on disk \
+  [--runtime-latest]     # resolve newest checkpoint AT LAUNCH (see below) \
+  [--depends-on <JOBID>] # queue behind a job: sbatch --dependency=afterany:<id> \
   [--out <path>]         # default: next *_leo_<N+1>.sh \
   [--submit]             # default: write only, print the sbatch command
 ```
@@ -44,6 +46,32 @@ Default behavior writes the script and prints the suggested `sbatch` command **w
 submitting** — let the user review first (they often want to resume from a newer
 checkpoint than the one currently on disk). Only pass `--submit` when the user has
 clearly asked to launch it now.
+
+## Queuing behind a still-running run (`--runtime-latest` + `--depends-on`)
+
+When the source run is **still training** (or might die near the end) and you want to
+line up the continuation now, don't hardcode a step — the checkpoint doesn't exist yet,
+and if the run crashes before reaching it a hardcoded path would fail on launch.
+
+- `--runtime-latest` emits a script that, **when the SLURM job actually starts**, globs
+  the newest `step-*.safetensors` on disk, derives a truthful `_cont<STEP>_SF<SF>` output
+  dir from that real step (plus any steps the parent already accumulated), and feeds both
+  into the launch via `RESUME_CKPT` / `RESUME_RUN_OUT` container env vars. No checkpoint
+  needs to exist at generation time. It exits 1 with a clear message if none exists at
+  launch. (Targets the project's container template: `srun` + `singularity exec` +
+  `"$SIF"`; fails clearly on other layouts.)
+- `--depends-on <JOBID>` submits with `--dependency=afterany:<JOBID>` — **afterany**, not
+  afterok, so the continuation still runs (and grabs the latest checkpoint) even if the
+  source job fails late. Because the dependent job starts only after the source ends, all
+  its checkpoints exist by then.
+
+Example — queue an SF100 continuation behind running job 12345:
+```bash
+python3 .../continue_training.py --base <base>.sh --skip-frames 100 \
+  --runtime-latest --depends-on 12345 --out <base>_cont_SF100.sh --submit
+```
+In this mode the printed run name shows `_cont<latest+<parent>>_SF<SF>` since the exact
+step is only known at launch; the `#SBATCH --job-name` uses `cont latest`.
 
 ## Procedure for the agent
 
