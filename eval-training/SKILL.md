@@ -1,6 +1,6 @@
 ---
 name: eval-training
-description: Generate the livedealer_infer.py evaluation command for a Wan2.2-S2V training run (e.g. leo_114.sh, a SLURM job id, or a checkpoint path like outputs/<run>/step-600.safetensors). Reads the training script and emits the inference snippet on the eyes-only test set, mirroring the canonical evals in live_dealer/infer/infer_card_class.sh — correct WAN_* env flags, lora_path/step, width/height, and pose/object inputs. Use when the user says "evaluate this training job", "make the infer command for run X", "eval job 43983676", "eval this checkpoint", or "generate the eval snippet".
+description: Generate the evaluation command for a Wan2.2-S2V training run (e.g. leo_114.sh, a SLURM job id, or a checkpoint path like outputs/<run>/step-600.safetensors). Reads the training script and emits the inference snippet on the eyes-only test set, mirroring the canonical evals in live_dealer/infer/infer_card_class.sh — correct WAN_* env flags, lora_path/step, width/height, and pose/object inputs. Emits either the default bidirectional livedealer_infer.py command or, with --streaming, the real-streaming (4-step causal, full-length video) livedealer_infer_real_streaming.py torchrun command. Use when the user says "evaluate this training job", "make the infer command for run X", "eval job 43983676", "eval this checkpoint", "generate the eval snippet", or "eval in streaming mode / full 10s".
 ---
 
 # Generate an evaluation snippet for a training run
@@ -31,6 +31,7 @@ python3 .claude/skills/eval-training/eval_snippet.py \
   [--step <STEP>]   # default: latest checkpoint (ignored with --checkpoint) \
   [--csv [metadata.csv]]   # evaluate on a metadata CSV (bare --csv auto-picks) instead of the lists \
   [--distill[=T0,T1,...]]  # distillation model: denoise in a few fixed steps \
+  [--streaming]     # emit the real-streaming (4-step causal) eval, full video (see below) \
   [--append]        # also append the snippet to infer_card_class.sh \
   [--launch]        # also run the eval on a GPU node (srun + singularity)
 ```
@@ -89,6 +90,52 @@ extra_inputs gating). Supply it either way:
   comma/space-separated string), `--extra-inputs input_image,input_audio,s2v_pose_video,card_detection`,
   `--width`, `--height`. With no source for a field the helper warns and defaults
   (no WAN_* flags; `--extra_inputs` = `input_image,input_audio,s2v_pose_video,s2v_object_video`).
+
+## Streaming mode (`--streaming`)
+
+By default the skill emits the **bidirectional** `livedealer_infer.py` command
+(25-step, one short clip per sample). Pass `--streaming` to instead emit the
+**real-streaming** eval — a `torchrun` launch of
+`live_dealer/infer/livedealer_infer_real_streaming.py` (4-step causal generation
+with a KV cache) that produces the **full-length video** (`num_clips` auto-caps to
+the pose/audio length at runtime, e.g. 100 → 25 clips for a 10 s / 300-frame clip).
+
+Key differences the helper handles:
+
+- **Per-sample loop, not one command.** The streaming launcher reads
+  pose/card/audio/gt as `.txt` lists but takes only a **single** `--input_image`
+  per run (it builds the ref cache once). To keep each clip's dealer matched, the
+  snippet is a `paste … | while read` loop over the index-aligned test lists, one
+  `torchrun` invocation per clip. (Each invocation reloads + FP8-quantizes the DiT,
+  so it's heavier than the single-process list eval — that's the price of a matched
+  ref image per sample.)
+- **Cards via `--card_detection` only.** Streaming dropped `card_video`; only
+  `WAN_CARD_CLASS_EMBED` (raw-detection) models are card-conditioned. The launcher's
+  CLI auto-sets `WAN_CARD_CLASS_EMBED` from `--card_detection`. A card-encoder
+  (`s2v_object_video`) model gets **no** card signal in streaming — the helper warns.
+- **Incompatible with `--csv`** (the streaming launcher has no
+  `--dataset_metadata_path`); the helper errors if both are given.
+- **`--distill` is ignored** — streaming already denoises in `--num_inference_steps`
+  (default 4) fixed steps.
+- Output goes to `output/<run>-<step>-stream/` (`-stream` suffix so it never
+  clobbers a bidirectional eval of the same checkpoint).
+
+Streaming knobs (all optional, sensible defaults): `--gpus` (torchrun
+`--nproc_per_node`, default `gpu` = all visible; pass `1` for single-GPU),
+`--num-inference-steps` (4), `--frames-per-clip` (12), `--lframes-per-block` (3),
+`--num-clips` (100 → full video), `--motion-frames` (9), `--fps` (30),
+`--rope-offset` (`relative`), `--save-layout` (`left_gt_right_gen`). Width/height
+come from the training config as usual (default 1280×720 if the config has none).
+
+> **Architecture caveat.** Streaming is built for **causal / few-step distilled**
+> checkpoints. Running a **bidirectional 25-step** LoRA (e.g. a plain
+> `card_class_embed` run) through the 4-step causal pipeline is plumbing-valid but
+> quality is not guaranteed — validate one sample before a full sweep.
+
+> **`--launch` note.** The `--launch` srun requests `--gres=gpu:1`, so a launched
+> streaming eval is **single-GPU** (`--gpus 1`). Multi-GPU streaming (the 4-GPU
+> `livedealer_infer_real_streaming.sh` layout) also needs that script's module loads
+> and NCCL env, so for multi-GPU run it from that wrapper rather than `--launch`.
 
 ## Distillation models (`--distill`)
 

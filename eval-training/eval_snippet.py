@@ -241,6 +241,62 @@ def launch(snippet, run, step, args, tag=""):
     sys.exit(rc)
 
 
+STREAM_SCRIPT = "live_dealer/infer/livedealer_infer_real_streaming.py"
+STREAM_DEFAULT_WH = ("1280", "720")  # canonical 720p when training config has no width/height
+
+
+def streaming_snippet(env, lora_path, extra, width, height, run, step, save_suffix, args):
+    """Build a real-streaming eval snippet: a per-sample loop over the index-aligned
+    eyes-only test lists, one torchrun invocation per clip.
+
+    The streaming launcher (livedealer_infer_real_streaming.py) reads .txt lists for
+    pose/card/audio/gt but only a SINGLE --input_image per run, so to keep each clip's
+    dealer matched we iterate the lists with `paste ... | while read` and feed one row
+    per invocation. WAN_CARD_CLASS_EMBED is auto-set by the launcher's CLI from
+    --card_detection; cards are only supported via detections (card_video was removed).
+    """
+    w = width or STREAM_DEFAULT_WH[0]
+    h = height or STREAM_DEFAULT_WH[1]
+    if not width or not height:
+        print(f"# WARN: no width/height from config; defaulting streaming to {w}x{h}",
+              file=sys.stderr)
+
+    has_card = "card_detection" in extra
+    if not has_card and "s2v_object_video" in extra:
+        print("# WARN: streaming dropped card_video support; a card-encoder (s2v_object_video) "
+              "model gets NO card conditioning here. Only card_detection (WAN_CARD_CLASS_EMBED) "
+              "models are card-conditioned in streaming.", file=sys.stderr)
+
+    # paste columns / read vars, index-aligned; CARD only referenced when card-conditioned.
+    cols = [LISTS["pose_video"], LISTS["card_detection"], LISTS["audio_path"],
+            LISTS["input_image"], LISTS["gt_path"]]
+    save_path = f"output/{run}-{step}{save_suffix}-stream"
+
+    body = [
+        f"paste -d '\\t' {' '.join(cols)} \\",
+        "| while IFS=$'\\t' read -r POSE CARD AUDIO IMG GT; do",
+        f"  {env} torchrun --standalone --nproc_per_node={args.gpus} \\",
+        f"    {STREAM_SCRIPT} \\",
+        f"    --lora_path {lora_path} \\",
+        '    --input_image "$IMG" \\',
+        '    --pose_video "$POSE" \\',
+    ]
+    if has_card:
+        body.append('    --card_detection "$CARD" \\')
+    body += [
+        '    --audio_path "$AUDIO" \\',
+        '    --gt_path "$GT" \\',
+        f"    --save_path {save_path} \\",
+        f"    --height {h} --width {w} --fps {args.fps} \\",
+        f"    --num_clips {args.num_clips} --frames_per_clip {args.frames_per_clip} "
+        f"--lframes_per_block {args.lframes_per_block} \\",
+        f"    --num_inference_steps {args.num_inference_steps} --motion_frames {args.motion_frames} \\",
+        f"    --rope_offset {args.rope_offset} --save_layout {args.save_layout}",
+        "done",
+    ]
+    return "\n".join(body)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -297,6 +353,39 @@ def main():
     ap.add_argument("--launch", action="store_true",
                     help="run the eval on a GPU node via srun + singularity exec --nv "
                          "(non-interactive), teeing output to eval_logs/")
+    # --- streaming mode (livedealer_infer_real_streaming.py) ---
+    st = ap.add_argument_group("streaming mode (--streaming)")
+    st.add_argument("--streaming", action="store_true",
+                    help="emit the real-streaming (4-step causal, KV-cache) eval instead of "
+                         "the bidirectional livedealer_infer.py command: a torchrun launch of "
+                         "live_dealer/infer/livedealer_infer_real_streaming.py that generates the "
+                         "FULL video (num_clips auto-caps to the pose length). Because the streaming "
+                         "launcher takes a single --input_image per run, the snippet is a per-sample "
+                         "loop over the index-aligned test lists (one invocation per clip, matched "
+                         "dealer). Cards are fed via --card_detection only (card_video was removed); "
+                         "incompatible with --csv (the launcher has no --dataset_metadata_path).")
+    st.add_argument("--gpus", default="gpu",
+                    help="torchrun --nproc_per_node for streaming (default: 'gpu' = all visible "
+                         "GPUs; pass an int like 1 for single-GPU). The pipeline runs the same path "
+                         "for 1/2/4/N ranks.")
+    st.add_argument("--fps", type=int, default=30, help="streaming output fps (default 30)")
+    st.add_argument("--frames-per-clip", dest="frames_per_clip", type=int, default=12,
+                    help="streaming image frames per clip (default 12)")
+    st.add_argument("--num-clips", dest="num_clips", type=int, default=100,
+                    help="streaming clip cap; auto-reduced to the pose/audio length at runtime "
+                         "(default 100 -> full video)")
+    st.add_argument("--lframes-per-block", dest="lframes_per_block", type=int, default=3,
+                    help="streaming latent frames per block (default 3)")
+    st.add_argument("--num-inference-steps", dest="num_inference_steps", type=int, default=4,
+                    help="streaming denoising steps (default 4; the causal/distill regime)")
+    st.add_argument("--motion-frames", dest="motion_frames", type=int, default=9,
+                    help="streaming motion frames (default 9)")
+    st.add_argument("--rope-offset", dest="rope_offset", default="relative",
+                    choices=["real", "relative"],
+                    help="streaming RoPE offset mode (default relative = training convention)")
+    st.add_argument("--save-layout", dest="save_layout", default="left_gt_right_gen",
+                    choices=["top_gen_bottom_gt", "left_gt_right_gen", "left_pose_right_gen", "gen_only"],
+                    help="streaming output composition (default left_gt_right_gen)")
     ap.add_argument("--workspace", default=None,
                     help="repo root to bind as /workspace (default: cwd)")
     ap.add_argument("--sif", default=None, help="override singularity image path")
@@ -312,6 +401,14 @@ def main():
 
     if not (args.base or args.job_id or args.checkpoint):
         ap.error("provide --checkpoint, --base, or --job-id")
+
+    if args.streaming and args.csv is not None:
+        ap.error("--streaming is incompatible with --csv: the streaming launcher reads "
+                 "pose/card/audio/gt as .txt lists and has no --dataset_metadata_path.")
+    if args.streaming and args.distill:
+        print("# WARN: --distill has no effect in --streaming; streaming already denoises in "
+              f"--num_inference_steps ({args.num_inference_steps}) fixed steps. Ignoring "
+              "distill timesteps.", file=sys.stderr)
 
     # Config source (training script): optional when --checkpoint is given and the
     # config is supplied via --wan-env / --extra-inputs / --width / --height.
@@ -400,49 +497,56 @@ def main():
             fail(f"CSV not found: {csv_abs}")
 
     env = " ".join(["HF_HUB_OFFLINE=1", *flags])
-    lines = [f"{env} python live_dealer/infer/livedealer_infer.py \\",
-             f"  --lora_path {lora_path} \\"]
-    if extra_module_ckpt:
-        lines.append(f"  --extra_module_ckpt_path {extra_module_ckpt} \\")
-    if csv_src:
-        # The CSV carries every per-input column; livedealer_infer.py builds all
-        # lists from it (pose/object/gt/input_image/audio/card_detection) and the
-        # pipeline uses whichever its WAN_* config needs, so the extra_inputs
-        # gating that selects list flags is irrelevant here.
-        csv_path = workspace_rel(csv_src, args.workspace or os.getcwd())
-        lines.append(f"  --dataset_metadata_path {csv_path} \\")
-        lines.append(f"  --dataset_base_path {args.dataset_base_path or DATA_ROOT} \\")
+    if args.streaming:
+        # Real-streaming eval: torchrun loop over the test lists (see streaming_snippet).
+        # CSV is rejected earlier; distill timesteps don't apply (streaming is few-step).
+        # Helper appends "-stream" to save_path; save_suffix here is the launch/append tag.
+        snippet = streaming_snippet(env, lora_path, extra, width, height, run, step, "", args)
+        save_suffix = "-stream"
     else:
-        if "s2v_pose_video" in extra:
-            lines.append(f"  --pose_video {LISTS['pose_video']} \\")
-        if "s2v_object_video" in extra:
-            lines.append(f"  --object_video {LISTS['object_video']} \\")
-        # WAN_CARD_CLASS_EMBED runs feed raw (x, y, class) detections instead of a
-        # rendered object video; the WAN_CARD_CLASS_EMBED=true flag is already carried
-        # over by wan_flags(), and livedealer_infer.py ignores object_video in this mode.
-        if "card_detection" in extra:
-            lines.append(f"  --card_detection {LISTS['card_detection']} \\")
-        lines.append(f"  --input_image {LISTS['input_image']} \\")
-        lines.append(f"  --audio_path {LISTS['audio_path']} \\")
-        lines.append(f"  --gt_path {LISTS['gt_path']} \\")
-    save_suffix = "-distill" if args.distill else ""
-    if csv_src:
-        save_suffix += "-" + (args.save_tag or csv_tag(csv_src))
-    lines.append(f"  --save_path output/{run}-{step}{save_suffix} \\")
-    lines.append("  --infer_frames 12 \\")
-    lines.append("  --num_clips 1 \\")
-    if width:
-        lines.append(f"  --width {width} \\")
-    if height:
-        lines.append(f"  --height {height} \\")
-    # Distillation models denoise in a few fixed steps; feed them explicitly and
-    # disable tea-cache (a many-step skip heuristic that's meaningless here).
-    if args.distill:
-        lines.append(f"  --custom_timesteps {args.distill} \\")
-        lines.append("  --no_tea_cache \\")
-    lines.append("  --no_motion_video \\")
-    lines.append("  --use_block_attn")
-    snippet = "\n".join(lines)
+        lines = [f"{env} python live_dealer/infer/livedealer_infer.py \\",
+                 f"  --lora_path {lora_path} \\"]
+        if extra_module_ckpt:
+            lines.append(f"  --extra_module_ckpt_path {extra_module_ckpt} \\")
+        if csv_src:
+            # The CSV carries every per-input column; livedealer_infer.py builds all
+            # lists from it (pose/object/gt/input_image/audio/card_detection) and the
+            # pipeline uses whichever its WAN_* config needs, so the extra_inputs
+            # gating that selects list flags is irrelevant here.
+            csv_path = workspace_rel(csv_src, args.workspace or os.getcwd())
+            lines.append(f"  --dataset_metadata_path {csv_path} \\")
+            lines.append(f"  --dataset_base_path {args.dataset_base_path or DATA_ROOT} \\")
+        else:
+            if "s2v_pose_video" in extra:
+                lines.append(f"  --pose_video {LISTS['pose_video']} \\")
+            if "s2v_object_video" in extra:
+                lines.append(f"  --object_video {LISTS['object_video']} \\")
+            # WAN_CARD_CLASS_EMBED runs feed raw (x, y, class) detections instead of a
+            # rendered object video; the WAN_CARD_CLASS_EMBED=true flag is already carried
+            # over by wan_flags(), and livedealer_infer.py ignores object_video in this mode.
+            if "card_detection" in extra:
+                lines.append(f"  --card_detection {LISTS['card_detection']} \\")
+            lines.append(f"  --input_image {LISTS['input_image']} \\")
+            lines.append(f"  --audio_path {LISTS['audio_path']} \\")
+            lines.append(f"  --gt_path {LISTS['gt_path']} \\")
+        save_suffix = "-distill" if args.distill else ""
+        if csv_src:
+            save_suffix += "-" + (args.save_tag or csv_tag(csv_src))
+        lines.append(f"  --save_path output/{run}-{step}{save_suffix} \\")
+        lines.append("  --infer_frames 12 \\")
+        lines.append("  --num_clips 1 \\")
+        if width:
+            lines.append(f"  --width {width} \\")
+        if height:
+            lines.append(f"  --height {height} \\")
+        # Distillation models denoise in a few fixed steps; feed them explicitly and
+        # disable tea-cache (a many-step skip heuristic that's meaningless here).
+        if args.distill:
+            lines.append(f"  --custom_timesteps {args.distill} \\")
+            lines.append("  --no_tea_cache \\")
+        lines.append("  --no_motion_video \\")
+        lines.append("  --use_block_attn")
+        snippet = "\n".join(lines)
 
     if all_steps:
         print(f"# checkpoints in {run}: {', '.join(f'step-{s}' for s in all_steps)}", file=sys.stderr)
