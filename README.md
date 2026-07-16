@@ -12,6 +12,7 @@ Custom [Claude Code](https://claude.com/claude-code) skills for working with
 | [`eval-training`](eval-training/) | Generate the `livedealer_infer.py` evaluation command for a training run (script or SLURM job id). Emits the inference snippet on the eyes-only test set with the correct `WAN_*` env flags, `lora_path`/step, width/height, and pose/object inputs. |
 | [`slurm-wait-analysis`](slurm-wait-analysis/) | Query `sacct` for your jobs, compute queue wait time and run time, and write a readable Markdown/HTML report with a per-job table, summary cards, and averages. Supports filtering by node count and minimum run time. |
 | [`transfer-lambda-to-leonardo`](transfer-lambda-to-leonardo/) | Copy/sync data from a Lambda cloud instance (or any non-LEONARDO Linux box) to LEONARDO `$WORK`. Solves the no-smallstep-cert auth problem via SSH agent forwarding, creates the destination dir (remote rsync is 3.1.3, no `--mkpath`), and runs a resumable rsync to the datamover with a `dmover1-4` parallel-split option for many small files. |
+| [`transfer-lambda-to-lambda`](transfer-lambda-to-lambda/) | Copy/sync data between two Lambda cloud instances (or any two Linux boxes sharing one SSH keypair). Solves the source-can't-reach-target hop via SSH agent forwarding (never copies the private key), creates the dest dir (`--mkpath`), and runs a resumable rsync with a parallel-streams option for many small files. |
 
 ## Installation
 
