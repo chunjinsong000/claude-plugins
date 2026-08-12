@@ -23,7 +23,7 @@ Plugins are scoped per environment — a box only installs what applies to it:
 
 ```bash
 # 1. Get the repo onto the box
-git clone <REMOTE_URL> ~/claude-plugins
+git clone https://github.com/chunjinsong000/claude-plugins.git ~/claude-plugins
 #    BSC note: if the login node has no outbound internet, rsync instead:
 #    rsync -a ~/claude-plugins/ <bsc-host>:claude-plugins/
 
