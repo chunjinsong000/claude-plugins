@@ -42,10 +42,18 @@ cp ~/claude-plugins/templates/CLAUDE.md.<machine> ~/.claude/CLAUDE.md   # then e
 
 ## Updating
 
-- Edit skills here → commit → push.
-- On other boxes: `git pull` in `~/claude-plugins` (or re-rsync), then
-  `claude plugin marketplace update chunjin` (local-path marketplaces
-  don't auto-refresh the way git-sourced ones do).
+Plugin versions resolve from the git commit SHA (no `version` pins in the
+manifests — do not add them, or pushes stop propagating until a manual bump).
+
+- **Edit → commit → push** from the Mac.
+- **Boxes with internet** that added the marketplace as
+  `chunjinsong000/claude-plugins`: nothing to do — auto-refreshes at
+  session start. Force mid-session with `/plugin marketplace update chunjin`.
+- **BSC (no outbound internet)**: re-rsync `~/claude-plugins`, then
+  `claude plugin marketplace update chunjin`.
+- **Mac (local-path marketplace = the working copy)**: after committing,
+  run `claude plugin update hpc-leonardo@chunjin` (or `/plugin marketplace
+  update chunjin`) to refresh the installed cache.
 
 ## Authoring conventions
 
