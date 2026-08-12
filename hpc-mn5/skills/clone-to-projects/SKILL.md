@@ -1,6 +1,6 @@
 ---
 name: clone-to-projects
-description: Use when the user wants to git-clone a repository on BSC MareNostrum5 ("git clone X", "clone this repo", "下载 / 拉这个 repo"). Defaults to placing the clone under `~/projects/` (= `/gpfs/projects/ehpc679/${USER}/`) per the team's storage layout. Use the user's explicit path if they specified one.
+description: Use when the user wants to git-clone a repository on BSC MareNostrum5 ("git clone X", "clone this repo", "下载 / 拉这个 repo"). Defaults to placing the clone under `~/projects/` (= `/gpfs/projects/ehpc1003/${USER}/`) per the team's storage layout. Use the user's explicit path if they specified one.
 ---
 
 # Clone Repo to ~/projects/
@@ -8,7 +8,7 @@ description: Use when the user wants to git-clone a repository on BSC MareNostru
 ## Overview
 
 Default destination for any `git clone` is **`~/projects/<repo_name>/`**
-which resolves to `/gpfs/projects/ehpc679/${USER}/<repo_name>/`. This
+which resolves to `/gpfs/projects/ehpc1003/${USER}/<repo_name>/`. This
 matches the team convention: **code lives in `projects/`, data lives in
 `scratch/`** (see `../../references/storage-layout.md` § 2).
 
@@ -71,7 +71,7 @@ Override only when the user explicitly says where to put it.
      should be non-empty.
 
 7. **Show the user**:
-   - Final absolute path (`/gpfs/projects/ehpc679/${USER}/<derived_name>/`)
+   - Final absolute path (`/gpfs/projects/ehpc1003/${USER}/<derived_name>/`)
      AND the convenient symlink (`~/projects/<derived_name>/`).
    - The latest commit hash + message.
    - **Optionally suggest** creating the per-project mirror in scratch:
@@ -107,7 +107,7 @@ violation in the response so they know.
 | Using `git clone` (no submodules) for repos with submodules | Use `--recursive` if `.gitmodules` exists |
 | Overwriting an existing dir without asking | Stop; ask if user wants to rename / pull / use new path |
 | Auto-running `pip install` / `make` after clone | NEVER. Clone only. User decides next steps. |
-| Cloning to a hardcoded `/gpfs/projects/ehpc679/vlk370419/...` path | Use `~/projects/` symlink for portability (see storage-layout § 8) |
+| Cloning to a hardcoded `/gpfs/projects/ehpc1003/vlk370419/...` path | Use `~/projects/` symlink for portability (see storage-layout § 8) |
 
 ## What this skill does NOT do
 

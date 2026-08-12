@@ -4,9 +4,9 @@ I am running on a MareNostrum 5 login node (alogin = ACC accelerated partition).
 
 - Cluster: MN5 ACC (4x H100 64GB per node), BSC
 - Scheduler: SLURM — QoS: acc_ehpc (production), acc_debug, acc_interactive
-- Account/project: <FILL IN: e.g. ehpc1003 — verify with `bsc_acct`>
-- Workspace: /gpfs/scratch/<project>/<user>  (e.g. /gpfs/scratch/ehpc1003/vlk142020)
-- Code convention: ~/projects/<repo> (symlink into /gpfs/projects/<project>/<user>/)
+- Account/project: ehpc1003 (verify validity with `bsc_acct`)
+- Workspace: /gpfs/scratch/ehpc1003/<user>  (e.g. /gpfs/scratch/ehpc1003/vlk142020)
+- Code convention: ~/projects/<repo> (symlink into /gpfs/projects/ehpc1003/<user>/)
 - Filesystem is GPFS — see the hpc-mn5 plugin's gpfs-hang-resilience reference
   before debugging hung reads
 - NO direct outbound internet — goes via the team proxy tunnel (git-proxy /

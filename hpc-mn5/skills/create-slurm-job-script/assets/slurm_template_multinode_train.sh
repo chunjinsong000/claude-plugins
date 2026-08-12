@@ -14,8 +14,8 @@
 
 # --- SBATCH directives — every TODO_* MUST be replaced before sbatch -------
 #SBATCH --job-name=TODO_jobname                      # e.g. wan22vae_stage1_4n
-#SBATCH --output=/gpfs/scratch/ehpc679/%u/slurm_logs/%x_%j.out
-#SBATCH --error=/gpfs/scratch/ehpc679/%u/slurm_logs/%x_%j.err
+#SBATCH --output=/gpfs/scratch/ehpc1003/%u/slurm_logs/%x_%j.out
+#SBATCH --error=/gpfs/scratch/ehpc1003/%u/slurm_logs/%x_%j.err
 #SBATCH --nodes=TODO_nodes                           # 1, 2, 4, 8, 16, 32, 64
 #SBATCH --ntasks-per-node=1                          # accelerate spawns 4 subprocs
 #SBATCH --cpus-per-task=80                           # BSC: 4 GPUs × 20 CPUs/GPU
@@ -63,7 +63,7 @@ export NCCL_RAS_ENABLE=0                             # disable RAS (NCCL 2.20+ s
 # Pick what you need, then remove the leading `#`. Lots of lines per rank.
 # export NCCL_DEBUG=INFO
 # export NCCL_DEBUG_SUBSYS=INIT,NET            # also: COLL,NET,ENV,ALL
-# export NCCL_DEBUG_FILE=/gpfs/scratch/ehpc679/${USER}/slurm_logs/nccl_${SLURM_JOB_ID}_%h_%p.log
+# export NCCL_DEBUG_FILE=/gpfs/scratch/ehpc1003/${USER}/slurm_logs/nccl_${SLURM_JOB_ID}_%h_%p.log
 # export TORCH_DISTRIBUTED_DEBUG=DETAIL
 # export TORCH_NCCL_BLOCKING_WAIT=1
 # export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
@@ -134,12 +134,12 @@ echo "Total Processes: $TOTAL_PROCESSES ($SLURM_NNODES nodes x $GPUS_PER_NODE GP
 echo "======================================"
 
 # --- Project paths — every TODO_* MUST be replaced -------------------------
-WAN_MODELS=/gpfs/scratch/ehpc679/${USER}/wan_models                           # leave as-is for Wan projects; comment out for non-Wan
+WAN_MODELS=/gpfs/scratch/ehpc1003/${USER}/wan_models                           # leave as-is for Wan projects; comment out for non-Wan
 DATASET_BASE=TODO_dataset_base                                                # absolute path to dataset root
 OUTPUT_DIR=TODO_output_dir                                                    # absolute path; mkdir -p done below
 PROJECT_DIR=TODO_project_dir                                                  # absolute path to project (under ~/projects/)
 
-mkdir -p "/gpfs/scratch/ehpc679/${USER}/slurm_logs"
+mkdir -p "/gpfs/scratch/ehpc1003/${USER}/slurm_logs"
 mkdir -p "$OUTPUT_DIR"
 
 # modelscope reads pre-staged Wan checkpoints from $WAN_MODELS (org/repo/ layout)

@@ -88,8 +88,8 @@ Report:
 Compute the file paths from the job's name and ID:
 
 ```bash
-LOG_OUT=/gpfs/scratch/ehpc679/${USER}/slurm_logs/${JOB_NAME}_${JOB_ID}.out
-LOG_ERR=/gpfs/scratch/ehpc679/${USER}/slurm_logs/${JOB_NAME}_${JOB_ID}.err
+LOG_OUT=/gpfs/scratch/ehpc1003/${USER}/slurm_logs/${JOB_NAME}_${JOB_ID}.out
+LOG_ERR=/gpfs/scratch/ehpc1003/${USER}/slurm_logs/${JOB_NAME}_${JOB_ID}.err
 ```
 
 (Path source: `../../references/storage-layout.md` § 6.)

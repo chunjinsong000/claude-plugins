@@ -94,7 +94,7 @@ probe_gpfs() {
 }
 
 # Usage: probe before any expensive operation
-probe_gpfs "/gpfs/scratch/ehpc679/${USER}/checkpoints" || exit 1
+probe_gpfs "/gpfs/scratch/ehpc1003/${USER}/checkpoints" || exit 1
 # ... now do the actual IO ...
 ```
 
@@ -283,4 +283,4 @@ If you're staring at a hung `cd` / `ls` / `mkdir` right now:
   acknowledges them but rarely root-cause-fixes individual incidents.
 - Related team incident: 2026-04-17 — a teammate hit a multi-hour GPFS
   hang at 23:00 Spain time while doing `mkdir` under
-  `/gpfs/scratch/ehpc679/<user>/`. Resolved by waiting until morning.
+  `/gpfs/scratch/ehpc1003/<user>/`. Resolved by waiting until morning.

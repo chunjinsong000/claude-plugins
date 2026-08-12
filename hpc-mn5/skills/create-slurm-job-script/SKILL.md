@@ -50,7 +50,7 @@ procedure below; only the entry-point script and walltime will differ.
    - **`TODO_ds_config`** — absolute path to DeepSpeed config JSON. If
      project doesn't use DeepSpeed, ASK whether to drop the
      `--deepspeed_config_file` flags entirely. Don't pick a default.
-   - Compute account stays `ehpc679` unless Daisy explicitly says
+   - Compute account stays `ehpc1003` unless Daisy explicitly says
      otherwise (see `../../references/slurm.md` § 1).
 
 3. **Detect conda env name** from the project dir basename (rules below
@@ -83,7 +83,7 @@ procedure below; only the entry-point script and walltime will differ.
    |---|---|
    | `TODO_jobname` | `<job_name>` from step 4 |
    | `TODO_nodes` | `<N>` from step 2 (1, 2, 4, 8, 16, ...) |
-   | `TODO_account` | `ehpc679` (default; only change if user explicitly says the compute account has rotated) |
+   | `TODO_account` | `ehpc1003` (default; only change if user explicitly says the compute account has rotated) |
    | `TODO_qos` | `acc_debug` or `acc_ehpc` from step 2 |
    | `TODO_switches` | `2@0:10:00` if acc_debug; `2@1:00:00` if acc_ehpc |
    | `TODO_time` | the walltime from step 2 (respect the QoS cap) |
@@ -191,7 +191,7 @@ Examples:
 
 | Mistake | Right way |
 |---|---|
-| Filling `TODO_account` with a non-`ehpc679` value without being told to | Default to `ehpc679`; user will say if the compute account has rotated. See `../../references/slurm.md` § 1 |
+| Filling `TODO_account` with a non-`ehpc1003` value without being told to | Default to `ehpc1003`; user will say if the compute account has rotated. See `../../references/slurm.md` § 1 |
 | `--gres=gpu:2` for "small test" | Always `--gres=gpu:4`; use `--nodes=1` for small tests |
 | `acc_ehpc --time=00:30:00` for a quick test | Use `acc_debug` for tests; acc_ehpc only for real training |
 | `conda activate diffsynth` for `DiffSynth1` dir | env name MUST match trailing digit: `diffsynth1` |
@@ -205,7 +205,7 @@ If you find yourself thinking any of these, STOP and re-read this skill:
 
 - "I'll edit NCCL settings to optimize"
 - "User asked for 2 GPUs, let me set --gres=gpu:2"
-- "Daisy didn't tell me ehpc679, but I see another account in `bsc_acct` — let me use that" (NO. Default to ehpc679 unless explicitly told otherwise)
+- "Daisy didn't tell me ehpc1003, but I see another account in `bsc_acct` — let me use that" (NO. Default to ehpc1003 unless explicitly told otherwise)
 - "User said quick test → I'll use acc_ehpc with short --time"
 - "I'll add `--mail-user=...`" (BSC SMTP is broken; we use Slack via job_notifier)
 - "I'll skip the cache block to reduce script length"

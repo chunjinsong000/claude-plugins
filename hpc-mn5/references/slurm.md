@@ -16,8 +16,8 @@ confusing them silently breaks job submission.
 
 - **Storage account** = the GPFS allocation that owns
   `/gpfs/projects/...` and `/gpfs/scratch/...`. **See `storage-layout.md`
-  § 1 for the canonical definition** (currently `ehpc679`, valid until
-  2027-03-25).
+  § 1 for the canonical definition** (currently `ehpc1003`; verify the
+  validity date with `bsc_acct` — see storage-layout.md § 1 note).
 - **Job-submission account** = the compute allocation passed via
   `sbatch -A <id>` or `salloc -A <id>`. Tied to the project's GPU-hour
   budget; **rotates when GPU quota is exhausted**. The two accounts are
@@ -132,13 +132,13 @@ half the GPU-hour budget for nothing.
 ## 7. Log Output Directives — SLURM-side rules
 
 The directory itself is defined in `storage-layout.md` § 6
-(`/gpfs/scratch/ehpc679/${USER}/slurm_logs/`). What's SLURM-specific:
+(`/gpfs/scratch/ehpc1003/${USER}/slurm_logs/`). What's SLURM-specific:
 
 - **Always use the `%`-format placeholders** so the script is portable
   across users:
   ```
-  #SBATCH --output=/gpfs/scratch/ehpc679/%u/slurm_logs/%x_%j.out
-  #SBATCH --error=/gpfs/scratch/ehpc679/%u/slurm_logs/%x_%j.err
+  #SBATCH --output=/gpfs/scratch/ehpc1003/%u/slurm_logs/%x_%j.out
+  #SBATCH --error=/gpfs/scratch/ehpc1003/%u/slurm_logs/%x_%j.err
   ```
   - `%u` → `$USER`, `%x` → job name, `%j` → job ID
   - Portability rule (no hardcoded usernames): `storage-layout.md` § 8
@@ -197,7 +197,7 @@ Before `sbatch`, verify:
 # 1. Is your job-submission account current?
 bsc_acct
 
-# 2. Is your storage account still valid? (storage-layout.md § 1 — ehpc679 → 2027-03-25)
+# 2. Is your storage account still valid? (storage-layout.md § 1 — ehpc1003)
 ls ~/scratch/
 
 # 3. Will the script syntax-check?
