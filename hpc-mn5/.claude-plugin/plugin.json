@@ -1,7 +1,8 @@
 {
   "name": "hpc-mn5",
   "displayName": "MareNostrum 5 HPC Workflows",
-  "version": "1.0.0",
   "description": "BSC MareNostrum 5 workflows: clone repos to ~/projects, create SLURM training scripts, monitor jobs with RUNNING.tsv/HISTORY.tsv tracking. Imported from valka-ai/bsc-onboarding.",
-  "author": { "name": "Chunjin Song" }
+  "author": {
+    "name": "Chunjin Song"
+  }
 }

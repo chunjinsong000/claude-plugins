@@ -1,7 +1,8 @@
 {
   "name": "hpc-leonardo",
   "displayName": "LEONARDO HPC Workflows",
-  "version": "1.0.0",
   "description": "LEONARDO (CINECA) workflows: clone repos to $WORK, create SLURM training scripts, monitor jobs with RUNNING.tsv/HISTORY.tsv tracking.",
-  "author": { "name": "Chunjin Song" }
+  "author": {
+    "name": "Chunjin Song"
+  }
 }
