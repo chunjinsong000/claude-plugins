@@ -3,11 +3,14 @@
 I am running on a MareNostrum 5 login node (alogin = ACC accelerated partition).
 
 - Cluster: MN5 ACC (4x H100 64GB per node), BSC
-- Scheduler: SLURM
-- Account/project: ehpc1003
-- Workspace: /gpfs/scratch/ehpc1003/<user>  (e.g. /gpfs/scratch/ehpc1003/vlk142020)
-- Login nodes have NO outbound internet — transfer code/data via rsync from the Mac,
-  or use the BSC transfer nodes
-- Conda envs: <FILL IN>
-- QoS / partitions in use: <FILL IN: e.g. acc_ehpc, acc_debug — verify with `sacctmgr show qos` / bsc_queues>
-- SLURM logs convention: <FILL IN>
+- Scheduler: SLURM — QoS: acc_ehpc (production), acc_debug, acc_interactive
+- Account/project: <FILL IN: e.g. ehpc1003 — verify with `bsc_acct`>
+- Workspace: /gpfs/scratch/<project>/<user>  (e.g. /gpfs/scratch/ehpc1003/vlk142020)
+- Code convention: ~/projects/<repo> (symlink into /gpfs/projects/<project>/<user>/)
+- Filesystem is GPFS — see the hpc-mn5 plugin's gpfs-hang-resilience reference
+  before debugging hung reads
+- NO direct outbound internet — goes via the team proxy tunnel (git-proxy /
+  gost; see valka-ai/bsc-onboarding docs/setup-proxy.md)
+- CUDA env: `source ~/cu128.sh` (or cu122.sh)
+- Quota/accounting: `bsc_quota`, `bsc_acct`
+- Slack job notifier: `source ~/scripts/job_notifier` in sbatch scripts

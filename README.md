@@ -16,8 +16,13 @@ Plugins are scoped per environment — a box only installs what applies to it:
 | Plugin | Install on | Contents |
 |---|---|---|
 | `hpc-leonardo` | LEONARDO login nodes (and the Mac, if driving LEONARDO from there) | clone-to-projects, create-slurm-job-script, monitor-jobs |
-| `hpc-mn5` *(future)* | BSC MareNostrum 5 | MN5 equivalents once the workflows stabilize there |
+| `hpc-mn5` | BSC MareNostrum 5 login nodes | same three skills, MN5-flavored (GPFS, acc_* QoS, proxy-gated internet) |
 | `lambda` *(future)* | Lambda GPU box | bare-metal GPU workflows (no scheduler) |
+
+Provenance: both hpc plugins derive from the team onboarding repos —
+`valka-ai/bsc-onboarding` (imported @379d04c) and `valka-ai/LEONARDO-onboarding`
+(content-identical to hpc-leonardo apart from two path fixes made here).
+If the team repos' `scripts/skills/` change, re-sync manually and note the commit.
 
 ## Setup on a new machine
 

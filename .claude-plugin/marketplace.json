@@ -11,6 +11,12 @@
       "source": "./hpc-leonardo",
       "description": "LEONARDO (CINECA) workflows: clone repos to $WORK, create SLURM training scripts, monitor jobs with RUNNING.tsv/HISTORY.tsv tracking.",
       "version": "1.0.0"
+    },
+    {
+      "name": "hpc-mn5",
+      "source": "./hpc-mn5",
+      "description": "BSC MareNostrum 5 workflows: clone repos to ~/projects, create SLURM training scripts, monitor jobs with RUNNING.tsv/HISTORY.tsv tracking.",
+      "version": "1.0.0"
     }
   ]
 }
