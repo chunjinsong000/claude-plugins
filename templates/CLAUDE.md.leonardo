@@ -1,0 +1,11 @@
+# Machine: LEONARDO (CINECA)
+
+I am running on a LEONARDO login node.
+
+- Cluster: LEONARDO Booster (4x A100 64GB per node), CINECA
+- Scheduler: SLURM — QoS, limits, and commands: see the `hpc-leonardo` plugin references
+- Code lives in `$WORK/$USER/`, data in `$SCRATCH` (auto-purged after 40 days)
+- SLURM logs: `$SCRATCH/slurm_logs/`
+- Conda envs: <FILL IN: path + default env name>
+- Account for sbatch: <FILL IN: -A account>
+- Support: superc@cineca.it

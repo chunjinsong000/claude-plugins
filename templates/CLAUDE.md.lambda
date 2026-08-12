@@ -1,0 +1,12 @@
+# Machine: Lambda GPU box
+
+I am running directly on a bare-metal GPU machine — there is NO scheduler
+(no SLURM). Run training/inference directly; use tmux for long jobs.
+
+- GPUs: <FILL IN: e.g. 8x H100 80GB>  (check: nvidia-smi)
+- Note: if this is the B200 node (150.136.211.158), it is power-capped at 1000W —
+  spare VRAM does not buy throughput, and nvidia-smi's 1s utilization is misleading
+- Conda / venv: <FILL IN: path + default env>
+- Data lives in: <FILL IN>
+- Checkpoints go to: <FILL IN>
+- Long runs: always inside tmux; name sessions after the run

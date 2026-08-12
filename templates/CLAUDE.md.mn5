@@ -1,0 +1,13 @@
+# Machine: MareNostrum 5 (BSC)
+
+I am running on a MareNostrum 5 login node (alogin = ACC accelerated partition).
+
+- Cluster: MN5 ACC (4x H100 64GB per node), BSC
+- Scheduler: SLURM
+- Account/project: ehpc1003
+- Workspace: /gpfs/scratch/ehpc1003/<user>  (e.g. /gpfs/scratch/ehpc1003/vlk142020)
+- Login nodes have NO outbound internet — transfer code/data via rsync from the Mac,
+  or use the BSC transfer nodes
+- Conda envs: <FILL IN>
+- QoS / partitions in use: <FILL IN: e.g. acc_ehpc, acc_debug — verify with `sacctmgr show qos` / bsc_queues>
+- SLURM logs convention: <FILL IN>

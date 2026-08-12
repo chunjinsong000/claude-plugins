@@ -1,0 +1,16 @@
+{
+  "name": "chunjin",
+  "owner": {
+    "name": "Chunjin Song",
+    "email": "chunjin.song@valka.ai"
+  },
+  "description": "Personal Claude Code plugins: HPC cluster workflows and reusable skills.",
+  "plugins": [
+    {
+      "name": "hpc-leonardo",
+      "source": "./hpc-leonardo",
+      "description": "LEONARDO (CINECA) workflows: clone repos to $WORK, create SLURM training scripts, monitor jobs with RUNNING.tsv/HISTORY.tsv tracking.",
+      "version": "1.0.0"
+    }
+  ]
+}
