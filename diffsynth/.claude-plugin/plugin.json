@@ -1,7 +1,7 @@
 {
   "name": "diffsynth",
   "displayName": "DiffSynth / Wan2.2-S2V Training & Eval",
-  "description": "Wan2.2-S2V (DiffSynth repo) training and evaluation workflows: self-forcing experiments, continue-training resume, eval-training inference commands, self-forcing eval, streaming performance benchmarks, eval-result comparison and video concatenation. Imported from chunjinsong000/claude_skills.",
+  "description": "Wan2.2-S2V (DiffSynth repo) training and evaluation workflows: continue-training resume, eval-training inference commands, self-forcing eval, streaming performance benchmarks, eval-result comparison and video concatenation. Self-forcing TRAINING lives in the DiffSynth repo's own .claude/skills/. Imported from chunjinsong000/claude_skills.",
   "author": {
     "name": "Chunjin Song"
   }

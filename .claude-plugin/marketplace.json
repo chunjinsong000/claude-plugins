@@ -24,7 +24,7 @@
     {
       "name": "diffsynth",
       "source": "./diffsynth",
-      "description": "Wan2.2-S2V (DiffSynth) training/eval: self-forcing experiments, continue-training, eval commands, self-forcing eval, streaming benchmarks, eval comparison/concat."
+      "description": "Wan2.2-S2V (DiffSynth) training/eval: continue-training, eval commands, self-forcing eval, streaming benchmarks, eval comparison/concat. Self-forcing training skill lives in the DiffSynth repo itself."
     },
     {
       "name": "ltx",
