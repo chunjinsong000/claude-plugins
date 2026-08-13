@@ -1,5 +1,5 @@
 ---
-name: LTX_experiment
+name: lipdub
 description: Set up and run LTX-2.3 video dubbing (LipDub) — re-dub the speech in an existing video to new dialogue while preserving the speaker's appearance, scene, and motion, using the IC-LoRA on top of the LTX-2.3-22B distilled model. Covers cloning the LTX-2 code, the Hugging Face gate/auth requirement, downloading the gated weights (base checkpoint + spatial upscaler + LipDub IC-LoRA + Gemma text encoder), and the exact lipdub CLI. Use when the user says "run LTX lipdub", "dub this video with LTX", "set up LTX-2 lipdub / lipsync", "download the LTX dubbing model", or references ltx.io lipsync-vs-lipdub.
 ---
 

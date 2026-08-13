@@ -1,0 +1,8 @@
+{
+  "name": "lambda-gpu",
+  "displayName": "Lambda GPU Machine Infra",
+  "description": "Lambda.ai GPU box infrastructure workflows: single-node SLURM cluster setup with email notifications, SLURM queue-wait analysis, and resumable rsync transfers lambda-to-lambda and lambda-to-LEONARDO. Imported from chunjinsong000/claude_skills.",
+  "author": {
+    "name": "Chunjin Song"
+  }
+}

@@ -17,12 +17,17 @@ Plugins are scoped per environment — a box only installs what applies to it:
 |---|---|---|
 | `hpc-leonardo` | LEONARDO login nodes (and the Mac, if driving LEONARDO from there) | clone-to-projects, create-slurm-job-script, monitor-jobs |
 | `hpc-mn5` | BSC MareNostrum 5 login nodes | same three skills, MN5-flavored (GPFS, acc_* QoS, proxy-gated internet) |
-| `lambda` *(future)* | Lambda GPU box | bare-metal GPU workflows (no scheduler) |
+| `lambda-gpu` | Lambda GPU boxes | single-node SLURM setup, wait analysis, lambda↔lambda / lambda→LEONARDO transfers |
+| `diffsynth` | wherever Wan2.2-S2V (DiffSynth) training/eval runs | self-forcing, continue-training, eval-training, eval-self-forcing, benchmark-streaming, compare/concat eval results |
+| `ltx` | boxes running LTX-2 experiments | LTX-2.3 LipDub dubbing |
 
 Provenance: both hpc plugins derive from the team onboarding repos —
 `valka-ai/bsc-onboarding` (imported @379d04c) and `valka-ai/LEONARDO-onboarding`
 (content-identical to hpc-leonardo apart from two path fixes made here).
 If the team repos' `scripts/skills/` change, re-sync manually and note the commit.
+`lambda-gpu`, `diffsynth`, and `ltx` were imported from the now-retired
+`chunjinsong000/claude_skills` repo (full history merged via `git subtree`,
+final upstream commit 9512b62); that repo is archived — edit skills here only.
 
 ## Setup on a new machine
 

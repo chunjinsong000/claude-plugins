@@ -15,6 +15,21 @@
       "name": "hpc-mn5",
       "source": "./hpc-mn5",
       "description": "BSC MareNostrum 5 workflows: clone repos to ~/projects, create SLURM training scripts, monitor jobs with RUNNING.tsv/HISTORY.tsv tracking."
+    },
+    {
+      "name": "lambda-gpu",
+      "source": "./lambda-gpu",
+      "description": "Lambda.ai GPU box infra: single-node SLURM setup with email notifications, SLURM wait analysis, lambda-to-lambda / lambda-to-LEONARDO transfers."
+    },
+    {
+      "name": "diffsynth",
+      "source": "./diffsynth",
+      "description": "Wan2.2-S2V (DiffSynth) training/eval: self-forcing experiments, continue-training, eval commands, self-forcing eval, streaming benchmarks, eval comparison/concat."
+    },
+    {
+      "name": "ltx",
+      "source": "./ltx",
+      "description": "LTX-2 workflows: LTX-2.3 LipDub video dubbing (gated weights download + lipdub CLI)."
     }
   ]
 }

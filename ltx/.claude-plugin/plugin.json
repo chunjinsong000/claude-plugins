@@ -1,0 +1,8 @@
+{
+  "name": "ltx",
+  "displayName": "LTX-2 Video Workflows",
+  "description": "LTX-2 model workflows: set up and run LTX-2.3 LipDub video dubbing (gated weights download, lipdub CLI). Imported from chunjinsong000/claude_skills.",
+  "author": {
+    "name": "Chunjin Song"
+  }
+}
