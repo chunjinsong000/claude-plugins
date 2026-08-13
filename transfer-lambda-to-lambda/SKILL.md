@@ -98,9 +98,36 @@ private key onto either Lambda box.**
      3.1.3 datamover).
 
 7. **(Many-small-files speedup)** Split the work across a few parallel rsyncs
-   over disjoint top-level subdirs (or a partitioned file list via
-   `--files-from`), then `wait`. 3–4 streams is usually enough to saturate the
-   link; more just thrash. Each stream uses the same forwarded agent.
+   over disjoint top-level subdirs, then `wait`. 3–4 streams is usually enough
+   to saturate the link; more just thrash. Each stream uses the same forwarded
+   agent. **Pass real directory paths as source args — do NOT list bare
+   directory names in `--files-from`:** a dir entry in a files-from list copies
+   the *directory itself but not its contents*, even with `-a`/`-r` (a
+   `--stats` shows `Total transferred file size: 0`). Give each stream a bucket
+   of actual subdir paths instead:
+   ```bash
+   # get the subdir list ONCE (avoid `| head`/`| tee | head` — a broken pipe
+   # SIGPIPEs the writer and truncates the last line):
+   ssh ubuntu@<src-ip> 'cd <src_dir> && ls -1d */' > /tmp/subdirs.txt
+   split -d -n l/4 /tmp/subdirs.txt /tmp/bucket_          # l/N = line-safe split
+   for b in /tmp/bucket_*; do
+     mapfile -t dirs < "$b"
+     rsync -ah --info=progress2 --partial \
+       -e 'ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes' \
+       "${dirs[@]/#/ubuntu@<src-ip>:<src_dir>/}" <target_dir>/ >> "/tmp/${b##*/}.log" 2>&1 &
+   done
+   wait                                                   # keep the shell alive — see note below
+   ```
+   For a modest dataset (a few hundred MB), a **single recursive rsync is
+   simpler and just as fast** — reach for parallel streams only when there are
+   tens of thousands of files.
+
+   > **Don't launch `rsync ... &` from a fire-and-forget background job that
+   > returns immediately** — when the launcher exits, its children can be
+   > killed mid-transfer (you'll see dirs created but 0 files, exit 0, no
+   > errors). Either run the rsync (or the `for … wait` block) *as* the
+   > long-lived foreground command, or `wait` on all PIDs before the script
+   > returns.
 
 8. **Monitor** to completion:
    ```bash
@@ -140,6 +167,9 @@ Step 1.
 | Dropping the trailing slash on the source | `src/` copies *contents*; `src` copies the dir itself into dest — different result |
 | Adding `-z` on a fast same-region link | Compression is CPU-bound and slows a fast link; omit unless cross-region/slow |
 | Single stream for tens of thousands of tiny files | Latency-bound; run 3–4 parallel rsyncs over disjoint subtrees (Step 7) |
+| Bare dir names in `--files-from` to parallelize | Copies the dirs but **not their contents** (transferred size 0) even with `-a`. Pass real subdir *paths* as source args (Step 7) |
+| `nohup rsync … &` inside a background job that returns at once | Children get killed when the launcher exits — dirs created, 0 files, exit 0. Run rsync as the long-lived command or `wait` on the PIDs |
+| Building the subdir list with `ls … \| tee f \| head` | The `head` SIGPIPEs `tee`, truncating the last line. Redirect straight to the file: `ls -1d */ > f` |
 | First-connection `StrictHostKeyChecking` prompt hanging the background job | Use `-o StrictHostKeyChecking=accept-new` so the unattended run doesn't block |
 
 ## What this skill does NOT do
