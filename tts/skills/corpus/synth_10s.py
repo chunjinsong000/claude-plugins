@@ -45,8 +45,40 @@ GAP_MS = 150           # only used by the loop fallback
 FADE_MS = 25
 # Pause control between repeated sentences. interval_silence is ignored unless the text
 # is split, so the segment cap has to be small enough to split it.
-SEG_TOKENS = 25
-PAUSE_MS = 400
+# Pauses are NOT made with interval_silence. Measured: interval_silence only applies
+# between segments, and forcing a split (seg=25 -> 3 segments) wrecks the audio --
+# spectral flatness 0.106 vs 0.014 for the same text generated as one segment, with
+# stretches of pure noise (flatness p90 hit 1.0). The apparent "too many repeats"
+# threshold was really the 1-segment -> 2-segment boundary. So: synthesize unsegmented,
+# then stretch the model's own inter-sentence gaps in post. Fully controllable, no artifacts.
+SEG_TOKENS = 120       # the model default: keep the text in ONE segment
+PAUSE_MS = 0           # settled default: no pause post-processing at all. Concatenating
+                       # different lines (stage 2.5) already leaves natural 100-360 ms
+                       # gaps, and stretching them to a uniform 600 ms measured slightly
+                       # WORSE (flatness 0.0197 vs 0.0161) for no gain in gap count.
+# Gap detection floor. At -45 dB the fast pace steps (0.72/0.85) show clear 100-600 ms
+# inter-sentence gaps, but the slow step (1.15) runs the sentences together with
+# low-level breath filling the joins, so nothing is found to stretch. -40 dB finds gaps
+# in most of those too; -35 dB starts catching intra-word gaps (14 per clip), so do not
+# go below -40 without listening.
+PAUSE_FLOOR_DB = -45.0
+
+# Emotion speeds the delivery up, but only on some dims. Measured against a no-emotion
+# baseline of 4.27 s on one line: happy 0.6 -> 3.34 s (-22%), calm 0.6 -> 2.67 s (-37%),
+# while surprised 0.6 -> 4.39 s (+3%) and melancholic 0.6 -> 4.86 s (+14%).
+# Compensation is applied by stepping the pace ladder, since duration_factor is flat
+# within +-0.05 and a nudge would do nothing.
+# NOTE: calm measures as the *fastest* dim, but compensating it made the calm lines drag --
+# they already sit high on the ladder (1.15) and a step took them to 1.30. So only happy
+# is compensated; the calm lines keep their mapped pace.
+# And the happy threshold alone also caught urgent/dealing lines whose emphasis is
+# "enthusiastic" -- those are *meant* to be quick. So the class gate is required too:
+# stage 2 tags each item with source.emotion_class, which is the single definition.
+ACCEL_DIMS = ("happy",)
+ACCEL_THRESHOLD = 0.30
+ACCEL_CLASSES = ("celebrate",)
+PACE_LADDER = [0.85, 1.00, 1.15, 1.30]   # 0.72 dropped: too rushed
+EMO_DIMS = ["happy", "angry", "sad", "afraid", "disgusted", "melancholic", "surprised", "calm"]
 
 
 def predict_repeats(text, dur_f, target=OVERSHOOT_S):
@@ -54,6 +86,55 @@ def predict_repeats(text, dur_f, target=OVERSHOOT_S):
     words = max(1, len(text.split()))
     need = max(words, (target - b) / a)
     return max(1, min(MAX_REPEATS, math.ceil(need / words)))
+
+
+def stretch_pauses(wav, sr, target_ms=PAUSE_MS, min_ms=90, thr_db=PAUSE_FLOOR_DB):
+    """Lengthen the gaps the model already leaves between repeated sentences.
+
+    Done in post because interval_silence needs segmentation, and segmentation degrades
+    the audio (see the note above). Only gaps already >= min_ms are stretched, so pauses
+    inside a word are left alone. Leading/trailing silence is untouched.
+
+    min_ms is 90, not 150: unsegmented output leaves inter-sentence gaps as short as
+    ~100 ms, and a 150 ms floor silently skipped half the clips. Intra-word gaps are
+    well under 90 ms, so they are still safe.
+    """
+    if target_ms <= 0:
+        return wav
+    fr = max(1, int(0.02 * sr))
+    n = len(wav) // fr
+    if n < 3:
+        return wav
+    frames = wav[: n * fr].reshape(n, fr)
+    quiet = np.sqrt((frames ** 2).mean(1)) < 10 ** (thr_db / 20)
+
+    runs = []                       # (start_frame, end_frame) of internal quiet runs
+    i = 0
+    while i < n:
+        if quiet[i]:
+            j = i
+            while j < n and quiet[j]:
+                j += 1
+            if i > 0 and j < n and (j - i) * 20 >= min_ms:
+                runs.append((i, j))
+            i = j
+        else:
+            i += 1
+    if not runs:
+        return wav
+
+    target_frames = int(round(target_ms / 20))
+    out, prev = [], 0
+    for a, b in runs:
+        out.append(wav[prev * fr: b * fr])
+        extra = target_frames - (b - a)
+        if extra > 0:                       # pad with the quietest part of the gap itself,
+            gap = wav[a * fr: b * fr]       # so room tone continues instead of hard silence
+            tile = np.tile(gap, int(np.ceil(extra / max(len(gap) // fr, 1))))[: extra * fr]
+            out.append(tile)
+        prev = b
+    out.append(wav[prev * fr:])
+    return np.concatenate(out).astype(wav.dtype)
 
 
 def loop_to_min(wav, sr):
@@ -80,17 +161,31 @@ def main():
     ap.add_argument("--ref", default=f"{V}/tts_test_out/refs_clean/ref02.wav",
                     help="speaker reference; IndexTTS-2.5 needs no transcript for it")
     ap.add_argument("--ref-dir", default=None,
-                    help="directory of reference audio; cycled across items so the corpus "
-                         "carries several speakers. Overrides --ref.")
+                    help="directory of reference audio. Overrides --ref.")
+    ap.add_argument("--refs-per-item", type=int, default=1,
+                    help="how many different reference voices to render each text with. "
+                         "Output ids get a _r<NN> suffix. With N texts x K refs-per-item "
+                         "and exactly N*K references available, every reference is used "
+                         "once -- which is the point: variety comes from the voices, so the "
+                         "text set can stay small and near-unique.")
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--num-shards", type=int, default=1)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--lang", default="EN")
     ap.add_argument("--seg-tokens", type=int, default=SEG_TOKENS,
-                    help="max_text_tokens_per_segment; must be small enough that the "
-                         "repeated text is actually split, or interval_silence does nothing")
+                    help="max_text_tokens_per_segment. Keep it HIGH (default 120) so the "
+                         "text stays in one segment; splitting degrades the audio badly.")
     ap.add_argument("--pause-ms", type=int, default=PAUSE_MS,
-                    help="inter-sentence pause inserted between segments")
+                    help="target inter-sentence gap, stretched in post-processing "
+                         "(0 disables). NOT interval_silence -- see the note in this file.")
+    ap.add_argument("--no-emo-pace-compensate", dest="emo_pace_compensate",
+                    action="store_false",
+                    help="disable the one-step pace slowdown applied when happy+calm "
+                         "weight is high; emotion otherwise speeds the delivery up")
+    ap.add_argument("--pause-floor-db", type=float, default=PAUSE_FLOOR_DB,
+                    help="quiet threshold for finding gaps to stretch. -45 (default) only "
+                         "finds them on the fast pace steps; -40 also reaches most slow-step "
+                         "lines; below -40 it starts stretching intra-word gaps.")
     ap.add_argument("--emo-scale", type=float, default=1.0,
                     help="global emotion intensity, 0-1. Scales emo_vector via emo_alpha, "
                          "so it needs no regeneration of the prompt json. sum(emo_vector) is "
@@ -106,6 +201,17 @@ def main():
             sys.exit(f"no .wav in --ref-dir {a.ref_dir}")
 
     items = json.load(open(a.src))["items"]
+    if a.refs_per_item > 1:
+        # expand each text into one job per reference voice, assigning references so that
+        # a run with len(refs) == len(items)*refs_per_item consumes each reference exactly once
+        expanded = []
+        for i, it in enumerate(items):
+            for j in range(a.refs_per_item):
+                job = dict(it)
+                job["id"] = f"{it['id']}_r{j:02d}"
+                job["_ref_index"] = i * a.refs_per_item + j
+                expanded.append(job)
+        items = expanded
     items = items[a.shard::a.num_shards]
     if a.limit:
         items = items[:a.limit]
@@ -137,17 +243,24 @@ def main():
 
         kw = dict(it["infer_kwargs"])
         kw.setdefault("max_text_tokens_per_segment", a.seg_tokens)
-        kw["interval_silence"] = a.pause_ms      # override the mapped value: this run
-                                                 # wants a deliberate inter-sentence pause
+        kw["interval_silence"] = 0               # pauses are added in post, not here
         if "emo_vector" in kw and a.emo_scale != 1.0:
             # emo_alpha scales the vector inside infer(); clamped to [0,1] there
             kw["emo_alpha"] = max(0.0, min(1.0, a.emo_scale))
+        emo_class = (it.get("source") or {}).get("emotion_class", "neutral")
+        if a.emo_pace_compensate and "emo_vector" in kw and emo_class in ACCEL_CLASSES:
+            ev = kw["emo_vector"]
+            accel = sum(ev[EMO_DIMS.index(d)] for d in ACCEL_DIMS) * kw.get("emo_alpha", 1.0)
+            if accel > ACCEL_THRESHOLD:
+                cur = kw.get("duration_factor", 1.0)
+                i = min(range(len(PACE_LADDER)), key=lambda j: abs(PACE_LADDER[j] - cur))
+                kw["duration_factor"] = PACE_LADDER[min(i + 1, len(PACE_LADDER) - 1)]
         n = predict_repeats(it["text"], kw.get("duration_factor", 1.0))
         tmp = tmp_path
 
         wav = sr = None
         raw = 0.0
-        ref = refs[k % len(refs)]
+        ref = refs[it.get("_ref_index", k) % len(refs)]
         for attempt in range(RETRIES + 1):
             text = " ".join([it["text"]] * n)
             tts.infer(spk_audio_prompt=ref, text=text, lang=a.lang,
@@ -157,14 +270,18 @@ def main():
                 w = w.mean(1)
             wav = w.astype(np.float32)
             raw = len(wav) / sr
-            if raw >= MIN_S or n >= MAX_REPEATS:
+            stretched_wav = stretch_pauses(wav, sr, target_ms=a.pause_ms,
+                                           thr_db=a.pause_floor_db)
+            stretched = len(stretched_wav) / sr
+            if stretched >= MIN_S or n >= MAX_REPEATS:
                 break
             # short take: scale the repeat count by how far off it was, +1 minimum
-            n = min(MAX_REPEATS, max(n + 1, math.ceil(n * MIN_S / max(raw, 0.1))))
+            n = min(MAX_REPEATS, max(n + 1, math.ceil(n * MIN_S / max(stretched, 0.1))))
             n_retry += 1
 
+        wav = stretched_wav
         looped = False
-        if raw < MIN_S:
+        if stretched < MIN_S:
             wav = loop_to_min(wav, sr)
             looped = True
             n_loop += 1
@@ -175,11 +292,14 @@ def main():
         mf.write(json.dumps({
             "id": it["id"], "phase": it["phase"], "situation": it["situation"],
             "text": it["text"], "repeats": n, "spoken_text": text,
-            "raw_seconds": round(raw, 3), "seconds": round(len(wav) / sr, 3),
-            "looped": looped,
+            "raw_seconds": round(raw, 3), "stretched_seconds": round(stretched, 3),
+            "seconds": round(len(wav) / sr, 3),
+            "looped": looped, "emotion_class": emo_class,
             "sample_rate": sr, "path": os.path.relpath(out_wav, a.out_dir),
             "reference": ref,
-            "infer_kwargs": it["infer_kwargs"],
+            "infer_kwargs": kw,             # what was ACTUALLY used, incl. --emo-scale
+                                            # and the pace compensation, so it reproduces
+            "infer_kwargs_mapped": it["infer_kwargs"],
         }) + "\n")
         mf.flush()
 

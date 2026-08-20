@@ -28,7 +28,6 @@ called from webui.py. So this script applies the model's own emo_bias and the
 """
 import argparse, json, os
 
-# Defaults sit next to this script; point --src/--out at your data instead.
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "dealer_phrases_filled.json")
 DST = os.path.join(HERE, "dealer_phrases_tts.json")
@@ -43,11 +42,13 @@ EMO_SUM_CAP = 0.8
 # the source data marks plenty of losing lines as emphasis="enthusiastic" (e.g. "Bust at
 # 22!"), which means "forceful", not "cheerful". Adding melancholic on top of a happy
 # base is not enough -- happy has to be damped, or a bust gets read gleefully.
-CELEBRATE = {"add": {"happy": 0.30, "surprised": 0.10}}          # the player just won
-SYMPATHY  = {"add": {"melancholic": 0.12, "calm": 0.10},
-             "scale": {"happy": 0.25}}                            # the player just lost
-WARM      = {"add": {"happy": 0.18}}                              # greetings, good luck
-URGENT    = {"add": {"surprised": 0.08}}                          # betting about to close
+# Each carries a name so downstream stages can key off the class without redefining the
+# situation list (synth_10s.py compensates pace on celebrate lines only).
+CELEBRATE = {"name": "celebrate", "add": {"happy": 0.30, "surprised": 0.10}}   # player won
+SYMPATHY  = {"name": "sympathy", "add": {"melancholic": 0.12, "calm": 0.10},
+             "scale": {"happy": 0.25}}                                         # player lost
+WARM      = {"name": "warm", "add": {"happy": 0.18}}                           # greetings
+URGENT    = {"name": "urgent", "add": {"surprised": 0.08}}                     # betting closing
 
 SITUATION_COLOUR = {
     "player_turn/player_blackjack":        CELEBRATE,
@@ -96,11 +97,18 @@ COURTESY_MOD = {"happy": 0.04}
 # small offsets around 1.0 are meaningless. Slowing down is strong (1.14 = +30%),
 # speeding up is weak (0.8 = only -7%). Hence: score the axes as integers, then
 # quantise onto steps coarse enough to actually be audible.
-PACE_STEPS = {-3: 0.72, -2: 0.85, -1: 0.85, 0: 1.00, 1: 1.15, 2: 1.15, 3: 1.30}
+# 0.72 was dropped: it read as rushed even after enthusiasm stopped buying a pace step,
+# so the fastest the corpus goes is 0.85. Only score -3 is affected (96 of 2000 texts:
+# 52 enthusiastic, 44 neutral, 0 calm) -- every other score keeps its step.
+PACE_STEPS = {-3: 0.85, -2: 0.85, -1: 0.85, 0: 1.00, 1: 1.15, 2: 1.15, 3: 1.30}
 LENGTH_PACE     = {"ultra_short": -1, "short": 0, "medium": 0, "long": 1}
 DIRECTNESS_PACE = {"direct": -1, "invitation": 0, "suggestion": 1, "observation": 1}
 SENTENCE_PACE   = {"imperative": -1, "exclamatory": -1, "question": 0, "declarative": 0}
-EMPHASIS_PACE   = {"enthusiastic": -1, "neutral": 0, "calm": 2}
+# "enthusiastic" used to get -1 here, which stacked with sentence_type (exclamatory -1)
+# and directness (direct -1) and dropped most of those lines onto the fastest step:
+# 310 of 552 enthusiastic texts landed on 0.72. It read as rushed, so enthusiasm no longer
+# buys a pace step -- it still ends up slightly quick via the other axes.
+EMPHASIS_PACE   = {"enthusiastic": 0, "neutral": 0, "calm": 2}
 URGENT_SITUATIONS = {"betting/last_bets", "betting/no_more_bets"}
 URGENT_PACE = -2
 
@@ -185,6 +193,7 @@ def main():
                         "axes": axes,
                         "situation_description": s.get("description"),
                         "pace_score": pace_score,
+                        "emotion_class": SITUATION_COLOUR.get(situation, {}).get("name", "neutral"),
                         **({"text_template": p["text_template"]} if "text_template" in p else {}),
                     },
                 })
