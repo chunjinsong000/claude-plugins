@@ -140,6 +140,22 @@ of 171 Hz:
 Below ~0.4 the emotion is effectively off, and single-clip f0 on 1-2 s lines is noisy
 enough that ordering can invert — treat these as a trend and confirm by ear.
 
+### Do NOT vary the emotion across repeats
+
+Tempting idea: synthesize each repeat separately with a decaying `--emo-scale` so the 10 s
+clip is not monotonous. Measured, it is not worth it — autoregressive decoding already
+varies the repeats on its own:
+
+| | f0 spread across repeats | passes |
+|---|---:|---:|
+| one pass, uniform scale 0.6 | 64.7 Hz | **1×** |
+| three passes, scale 0.75/0.60/0.45 | 90.1 Hz | 3× |
+
+One pass already delivers 72% of the variation at a third of the cost, and in the 3-pass
+version the intended decay is **not even recoverable** from the output: f0 came out
+285→198→255→209→232→195 Hz, because natural per-repeat variation (±35 Hz) swamps the
+systematic difference the scale ladder creates (~20 Hz). Keep one pass.
+
 ### Reference loudness transfers to the output
 
 Quiet reference in, quiet clone out. Three avspeech references at rms 0.014–0.022 produced
