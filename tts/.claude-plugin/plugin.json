@@ -1,0 +1,8 @@
+{
+  "name": "tts",
+  "displayName": "TTS Engines",
+  "description": "Run the five TTS engines deployed under valka-ai (Qwen3-TTS, VoxCPM2, FireRedTTS3, Fish S2 Pro, IndexTTS-2.5): voice design, zero-shot voice cloning, pace/pitch control, reference-audio prep, and the ASR + CAM++ verification harness.",
+  "author": {
+    "name": "Chunjin Song"
+  }
+}

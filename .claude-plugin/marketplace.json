@@ -30,6 +30,11 @@
       "name": "ltx",
       "source": "./ltx",
       "description": "LTX-2 workflows: LTX-2.3 LipDub video dubbing (gated weights download + lipdub CLI)."
+    },
+    {
+      "name": "tts",
+      "source": "./tts",
+      "description": "TTS engine workflows: run/clone/voice-design across Qwen3-TTS, VoxCPM2, FireRedTTS3, Fish S2 Pro and IndexTTS-2.5 (each in its own venv), plus reference-audio prep and ASR + CAM++ verification."
     }
   ]
 }
