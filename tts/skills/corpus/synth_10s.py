@@ -91,6 +91,11 @@ def main():
                          "repeated text is actually split, or interval_silence does nothing")
     ap.add_argument("--pause-ms", type=int, default=PAUSE_MS,
                     help="inter-sentence pause inserted between segments")
+    ap.add_argument("--emo-scale", type=float, default=1.0,
+                    help="global emotion intensity, 0-1. Scales emo_vector via emo_alpha, "
+                         "so it needs no regeneration of the prompt json. sum(emo_vector) is "
+                         "the share of the reference's own emotion that gets overwritten, so "
+                         "0.5 here halves how far each line departs from the reference voice.")
     a = ap.parse_args()
 
     refs = [a.ref]
@@ -134,6 +139,9 @@ def main():
         kw.setdefault("max_text_tokens_per_segment", a.seg_tokens)
         kw["interval_silence"] = a.pause_ms      # override the mapped value: this run
                                                  # wants a deliberate inter-sentence pause
+        if "emo_vector" in kw and a.emo_scale != 1.0:
+            # emo_alpha scales the vector inside infer(); clamped to [0,1] there
+            kw["emo_alpha"] = max(0.0, min(1.0, a.emo_scale))
         n = predict_repeats(it["text"], kw.get("duration_factor", 1.0))
         tmp = tmp_path
 

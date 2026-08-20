@@ -121,6 +121,25 @@ guaranteed rather than trimmed (`MIN_S = 10.4`), so the caller can just take the
   nothing at all**. Force it: `--seg-tokens 25 --pause-ms 400` → 2–5 pauses of
   180–700 ms in the first 10 s.
 
+### Emotion intensity is the knob you will actually want
+
+The mapping pushes celebration lines to the `sum(emo_vector) = 0.8` ceiling, which reads as
+too theatrical for a dealer — 12.2% of a 10k corpus sits at that ceiling. Because
+`sum(emo_vector)` is the share of the reference's own emotion being overwritten,
+`--emo-scale` (applied via `emo_alpha`, so no prompt-json regeneration) dials the whole
+corpus back. Measured on a "Winner!"-type line, median f0 against a no-emotion baseline
+of 171 Hz:
+
+| `--emo-scale` | effective sum | f0 | vs no emotion |
+|---|---:|---:|---:|
+| 1.0 | 0.80 | 235 Hz | +37% — theatrical |
+| 0.6 | 0.48 | 198 Hz | +16% — **recommended** |
+| 0.4 | 0.32 | 180 Hz | +5% |
+| off | 0.00 | 171 Hz | — |
+
+Below ~0.4 the emotion is effectively off, and single-clip f0 on 1-2 s lines is noisy
+enough that ordering can invert — treat these as a trend and confirm by ear.
+
 ### Reference loudness transfers to the output
 
 Quiet reference in, quiet clone out. Three avspeech references at rms 0.014–0.022 produced
