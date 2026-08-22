@@ -27,7 +27,6 @@ import argparse, json, math, os, sys, time
 import numpy as np
 import soundfile as sf
 
-# Defaults sit next to this script; point --src/--out at your data instead.
 HERE = os.path.dirname(os.path.abspath(__file__))
 V = "/home/ubuntu/chunjin/project/valka-ai"
 SRC = os.path.join(HERE, "dealer_phrases_tts.json")
@@ -201,6 +200,11 @@ def main():
             sys.exit(f"no .wav in --ref-dir {a.ref_dir}")
 
     items = json.load(open(a.src))["items"]
+    # _ref_index must be assigned BEFORE sharding, for every refs_per_item value: the
+    # fallback (the loop counter k) is a per-shard index, so with 8 shards every shard
+    # would reuse refs[0:len(shard)] and most references would never be touched.
+    for i, it in enumerate(items):
+        it["_ref_index"] = i * a.refs_per_item
     if a.refs_per_item > 1:
         # expand each text into one job per reference voice, assigning references so that
         # a run with len(refs) == len(items)*refs_per_item consumes each reference exactly once

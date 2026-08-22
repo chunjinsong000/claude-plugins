@@ -17,7 +17,6 @@ Writes dealer_phrases_filled.json next to the source.
 """
 import argparse, collections, copy, json, os, random, re
 
-# Defaults sit next to this script; point --src/--out at your data instead.
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "dealer_phrases.json")
 DST = os.path.join(HERE, "dealer_phrases_filled.json")
@@ -38,13 +37,27 @@ CARD_LIST = [f"{r} of {s}" for r in RANK_LIST for s in SUITS]      # all 52
 BOX_LIST = list(range(1, 8))                                        # real blackjack seats
 SECONDS_LIST = [3, 5, 10, 15, 20, 30]                               # values a dealer calls out
 
+# Names are fully random over a large pool (user request), not a small fixed subset.
 NAME_POOL = [
-    "Sarah", "Alex", "Emma", "Daniel", "Olivia", "Ryan", "Chloe", "Marcus", "Sophie",
-    "Nathan", "Grace", "Oliver", "Hannah", "Ethan", "Lucy", "Adam", "Isabel", "Connor",
-    "Maya", "Julian", "Ruby", "Simon", "Nora", "Felix", "Leah", "Victor", "Iris",
-    "Damian", "清", "Elena", "Theo", "Naomi", "Caleb", "Freya", "Miles", "Alice",
+    "Sarah","Alex","Emma","Daniel","Olivia","Ryan","Chloe","Marcus","Sophie","Nathan",
+    "Grace","Oliver","Hannah","Ethan","Lucy","Adam","Isabel","Connor","Maya","Julian",
+    "Ruby","Simon","Nora","Felix","Leah","Victor","Iris","Damian","Elena","Theo",
+    "Naomi","Caleb","Freya","Miles","Alice","James","Mia","Lucas","Ella","Henry",
+    "Zoe","Owen","Lily","Jack","Ava","Leo","Nina","Tom","Clara","Ben",
+    "Rosa","Max","Ivy","Sam","Erin","Luke","Faye","Cole","June","Dean",
+    "Tess","Rhys","Anna","Kai","Beth","Noel","Dana","Seth","Gwen","Paul",
+    "Vera","Hugo","Skye","Finn","Lena","Jude","Cora","Neil","Faith","Ross",
+    "Ada","Blake","Pearl","Grant","Hope","Reid","Sage","Wade","Joy","Craig",
+    "Belle","Scott","Wren","Todd","Eve","Brett","Fern","Chad","Dawn","Kurt",
+    "Molly","Drew","Carys","Glen","Tara","Bruce","Nell","Keith","Paige","Roy",
+    "Willa","Dale","Rue","Mark","Isla","Gary","Bree","Carl","Demi","Earl",
+    "Mabel","Frank","Opal","Grady","Sadie","Heath","Tilly","Ivan","Wendy","Joel",
+    "Cleo","Kyle","Aria","Liam","Daisy","Nate","Elsie","Omar","Flora","Pete",
+    "Greta","Quinn","Hazel","Rory","Ines","Shane","Jade","Troy","Kira","Wes",
+    "Lois","Zane","Mara","Abel","Nia","Boyd","Orla","Cade","Pia","Dirk",
+    "Romy","Enzo","Suki","Ford","Thea","Gil","Uma","Hank","Vada","Ike",
+    "Xena","Jay","Yara","Kent","Zara","Lane","Amy","Milo","Bria","Nash",
 ]
-NAME_POOL = [n for n in NAME_POOL if n.isascii()]
 
 
 def pair_total(rank):
@@ -93,13 +106,22 @@ def domains_for(text, situation, names):
     return dom, pair_line
 
 
-def render(text, dom, pair_line, cursor):
-    """Emit one variant. Values come from a GLOBAL per-placeholder cursor, so coverage
-    accumulates across templates: with a phrase budget below 52 per template, all 52
-    cards still appear in the corpus as a whole rather than 52 times per template."""
+def render(text, dom, pair_line, cursor, rng=None):
+    """Emit one variant.
+
+    Default: values come from a GLOBAL per-placeholder cursor, so coverage accumulates
+    across templates -- with a per-template budget below 52, all 52 cards still appear in
+    the corpus as a whole rather than 52 times per template.
+
+    With `rng` (--random-fill): values are sampled independently instead. That trades the
+    exact-coverage guarantee for less regular output; at corpus sizes in the tens of
+    thousands every value still shows up, but verify rather than assume it.
+    """
     used = {}
 
     def take(m):
+        if rng is not None:
+            return rng.choice(dom[m])
         i = cursor[m]
         cursor[m] = i + 1
         return dom[m][i % len(dom[m])]
@@ -146,7 +168,11 @@ def allocate(caps, budget):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=20260820)
-    ap.add_argument("--names", type=int, default=10, help="size of the random name pool")
+    ap.add_argument("--names", type=int, default=0,
+                    help="restrict to a random subset of the name pool (0 = use ALL names)")
+    ap.add_argument("--random-fill", action="store_true",
+                    help="sample placeholder values at random instead of rotating global "
+                         "cursors; more irregular output, no exact-coverage guarantee")
     ap.add_argument("--cap", type=int, default=0,
                     help="max variants per phrase (0 = full domain)")
     ap.add_argument("--target", type=int, default=0,
@@ -159,7 +185,8 @@ def main():
     a = ap.parse_args()
 
     rng = random.Random(a.seed)
-    names = rng.sample(NAME_POOL, a.names)
+    names = rng.sample(NAME_POOL, a.names) if a.names else list(NAME_POOL)
+    rng.shuffle(names)
     d = json.load(open(a.src))
     out = copy.deepcopy(d)
 
@@ -215,7 +242,8 @@ def main():
                 dom, pair_line = domains_for(p["text"], situation, names)
                 n = counts[(pn, sn, idx)]
                 for i in range(n):
-                    filled, used = render(p["text"], dom, pair_line, cursor)
+                    filled, used = render(p["text"], dom, pair_line, cursor,
+                                          rng if a.random_fill else None)
                     q = dict(p)
                     q["text_template"] = p["text"]
                     q["text"] = filled
@@ -229,6 +257,7 @@ def main():
         "seed": a.seed,
         "name_pool": names,
         "target": a.target or None,
+        "random_fill": a.random_fill,
         "expansion": ("each placeholder enumerated over its full domain; multi-placeholder "
                       "phrases rotate in lockstep (max(domain) variants, not a product)")
                      if not a.target else

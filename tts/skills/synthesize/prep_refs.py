@@ -25,6 +25,15 @@ ap.add_argument("--gate-dbfs", type=float, default=-45.0,
                 help="20ms frames quieter than this are treated as silence")
 ap.add_argument("--pad-ms", type=float, default=60.0, help="keep this much around each kept run")
 ap.add_argument("--transcripts", help="optional json {basename: text} to carry into the index")
+ap.add_argument("--keep-names", action="store_true",
+                help="name outputs after the input file instead of ref0001.wav; keeps the "
+                     "corpus traceable back to the source clip")
+ap.add_argument("--jobs", type=int, default=1,
+                help="parallel workers; thousands of files are IO+decode bound, so this "
+                     "is the difference between minutes and half an hour")
+ap.add_argument("--subtype", default="PCM_16",
+                help="output encoding; PCM_16 is a 4x size cut over float64 and loses "
+                     "nothing a TTS reference needs")
 a = ap.parse_args()
 
 paths = list(a.wavs)
@@ -35,9 +44,8 @@ if not paths:
 os.makedirs(a.out, exist_ok=True)
 tr = json.load(open(a.transcripts)) if a.transcripts else {}
 
-print(f"{'id':<8}{'raw dur':>9}{'clean dur':>11}{'raw rms':>9}{'clean rms':>11}  file")
-rows = []
-for i, p in enumerate(paths, 1):
+def process(job):
+    i, p = job
     w, sr = sf.read(p)
     m = w.mean(1) if w.ndim > 1 else w
     fr = int(0.02 * sr); n = len(m) // fr
@@ -53,16 +61,36 @@ for i, p in enumerate(paths, 1):
         k[:] = True
     v = fs[k].reshape(-1)
     v = np.clip(v / max(np.sqrt((v ** 2).mean()), 1e-9) * a.target_rms, -0.99, 0.99)
-    rid = f"ref{i:02d}"
-    outp = os.path.join(a.out, f"{rid}.wav")
-    sf.write(outp, v, sr)
     base = os.path.basename(p)
-    rows.append({"id": rid, "path": os.path.abspath(outp), "orig_path": os.path.abspath(p),
-                 "file": base, "text": tr.get(base, {}).get("text", "") if tr else ""})
-    print(f"{rid:<8}{len(m)/sr:8.2f}s{len(v)/sr:10.2f}s"
-          f"{np.sqrt((m**2).mean()):9.3f}{np.sqrt((v**2).mean()):11.3f}  {base}")
-    if len(v) / sr < 3.0:
-        print(f"         ^ only {len(v)/sr:.1f}s of speech survived -- weak reference")
+    rid = os.path.splitext(base)[0] if a.keep_names else f"ref{i:05d}"
+    outp = os.path.join(a.out, f"{rid}.wav")
+    sf.write(outp, v, sr, subtype=a.subtype)
+    return {"id": rid, "path": os.path.abspath(outp), "orig_path": os.path.abspath(p),
+            "file": base, "text": tr.get(base, {}).get("text", "") if tr else "",
+            "raw_seconds": round(len(m) / sr, 2), "seconds": round(len(v) / sr, 2),
+            "raw_rms": round(float(np.sqrt((m ** 2).mean())), 4),
+            "rms": round(float(np.sqrt((v ** 2).mean())), 4)}
+
+
+jobs = list(enumerate(paths, 1))
+if a.jobs > 1:
+    from multiprocessing import Pool
+    with Pool(a.jobs) as pool:
+        rows = pool.map(process, jobs, chunksize=16)
+else:
+    rows = [process(j) for j in jobs]
+
+weak = [r for r in rows if r["seconds"] < 3.0]
+print(f"{'':<8}{'raw dur':>9}{'clean dur':>11}{'raw rms':>9}{'clean rms':>11}")
+rr = np.array([r["raw_rms"] for r in rows]); cr = np.array([r["rms"] for r in rows])
+rd = np.array([r["raw_seconds"] for r in rows]); cd = np.array([r["seconds"] for r in rows])
+print(f"{'median':<8}{np.median(rd):8.2f}s{np.median(cd):10.2f}s{np.median(rr):9.3f}{np.median(cr):11.3f}")
+print(f"{'min':<8}{rd.min():8.2f}s{cd.min():10.2f}s{rr.min():9.3f}{cr.min():11.3f}")
+print(f"{'max':<8}{rd.max():8.2f}s{cd.max():10.2f}s{rr.max():9.3f}{cr.max():11.3f}")
+if weak:
+    print(f"\n{len(weak)} references left under 3s of speech -- weak, e.g.:")
+    for r in weak[:5]:
+        print(f"   {r['file']}  {r['seconds']}s")
 
 idx = os.path.join(os.path.dirname(os.path.abspath(a.out)), "refs_clean.json")
 json.dump(rows, open(idx, "w"), indent=2, ensure_ascii=False)

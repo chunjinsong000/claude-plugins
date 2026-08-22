@@ -5,25 +5,65 @@ description: Turn a structured phrase-bank JSON (templates with {placeholders} p
 
 # Phrase bank → fixed-length TTS corpus
 
-Four stages. Built for
+Five stages. Built for
 `DiffSynth/data/project21_snapshot_12032025_packed/dealer_phrases_text/dealer_phrases.json`
 (2741 templates, 34 situations, 7 placeholders) but the shape is generic.
 
-## The settled recipe
+## The settled recipe (v2: unique texts, LLM-augmented bank)
 
 ```bash
-python fill_placeholders.py --target 120000            # 1   placeholder expansion
-python make_tts_prompts.py                             # 2   attributes -> control signals
-python make_mixed_prompts.py --target-clips 2000       # 2.5 concat different lines
+python paraphrase_templates.py --variants 14 --batch 16 \
+    --out dealer_phrases_aug.json                        # 0.5 grow the bank with an LLM
+python fill_placeholders.py --src dealer_phrases_aug.json \
+    --target 120000 --out dealer_phrases_filled.json     # 1   placeholder expansion
+python make_tts_prompts.py                               # 2   attributes -> control signals
+python make_mixed_prompts.py --target-clips 10000        # 2.5 concat different lines
 python synth_10s.py --src dealer_phrases_mixed.json \
-    --ref-dir refs_norm/ --refs-per-item 5 \
-    --emo-scale 0.6 --shard $S --num-shards 2          # 3   synthesis
+    --ref-dir refs_norm/ --refs-per-item 1 \
+    --emo-scale 0.6 --shard $S --num-shards 8            # 3   synthesis
 ```
 
-2000 texts x 5 reference voices = 10,000 clips, each >10 s. Settled after listening:
-`--emo-scale 0.6`, no pause post-processing, pace steps `0.85 / 1.0 / 1.15 / 1.3`,
-`emphasis: enthusiastic` gets no pace bonus. ~7.5 h on 2xH100 at 4 processes per GPU
-(measured 1.85x speedup at 4-way -- the GPU saturates, so more processes buy little).
+10,000 unique texts x 1 reference voice each = 10,000 clips, every clip >10 s, every one
+of the 2,737 native templates present, emotion mix exactly the original bank's. Settled
+after listening: `--emo-scale 0.6`, no pause post-processing, pace steps
+`0.85 / 1.0 / 1.15 / 1.3`, `emphasis: enthusiastic` gets no pace bonus. ~7.5 h on 2xH100
+at 4 processes per GPU (1.85x speedup at 4-way; the GPU saturates beyond that).
+
+Earlier v1 variant (no LLM augmentation): 2,000 texts x `--refs-per-item 5` — same audio
+count, texts repeat across 5 voices, phrase reuse 2.0x. Use it when no LLM is available.
+
+---
+
+## Stage 0.5 - grow the bank with paraphrases (`paraphrase_templates.py`)
+
+Non-neutral capacity is the binding constraint (celebrate: 561 templates, 1,193
+combinations), so real text diversity needs new WORDINGS, not more placeholder values.
+A local instruction-tuned LLM works fine — this used gemma-3-12b-it (LTX's text encoder,
+already on disk), batch 16, ~50 min for 2,741 templates x 14 variants on one H100.
+
+The generation is the easy half. The filters are where the correctness lives, and each
+one exists because the unfiltered output actually contained the failure:
+
+1. **Invented placeholders.** The model produced `{player name}` (space!) and
+   `{round number}` — nothing in the bank. The obvious check, comparing
+   `re.findall(r"\{[a-z_]+\}")` multisets, PASSES these, because the malformed forms
+   don't match the pattern on either side. Check instead that every `\{[^}]*\}` span is
+   in the exact whitelist of valid placeholders, and that braces balance. 530 dropped —
+   and these would have been spoken aloud as "curly brace player name".
+2. **Bare-context placeholders.** `{box}` without a seat word before it reads as "for 3";
+   `{seconds}` without "seconds" after it reads as "closing in 3". 137 dropped.
+3. **Bookish register.** "Twenty-one, surpassed." passes every mechanical check. A second
+   LLM pass judging "natural SPOKEN dealer English? YES/NO" (greedy, 3 tokens, batch 96,
+   ~10 min) dropped 5,239 of 27,340 (19%).
+
+Dedup must be **situation-wide and single-definition**: per-template dedup let two
+neighbouring templates both produce "Bets are open, please.", and one variant regenerated
+another template's original verbatim; then a second, subtly different key function
+(missing `.strip()`) still let 4 through. One `norm_key()`, pre-seeded with every original
+line in the situation.
+
+Originals are always kept; variants carry `origin: "paraphrase"` + `origin_index`.
+Yield after all filters: ~8 kept of 14 requested per template (2,741 -> 24,842).
 
 ---
 
@@ -94,28 +134,32 @@ Repeating one line for 10 s is mechanical. Two non-obvious requirements:
 Concatenating also measured *cleaner* than repeating (flatness 0.003-0.022 vs 0.016-0.020),
 partly because distinct lines reach 10 s with fewer tokens than a repeated short line.
 
-### Quotas must go by TEMPLATE count, not phrase count
+### Quotas must go by NATIVE template count, not phrase count
 
 Placeholder combinatorics are wildly uneven -- **99.1% of the cartesian capacity sits in
 neutral situations** (a card+box+points line has 6,552 combinations; `"Winner!"` has 1).
-Quotas by phrase count gave **96% neutral clips against 47% of the templates**. Template
-count reflects how the bank was actually written, so that is the mix to reproduce.
+Quotas by phrase count gave **96% neutral clips against 47% of the templates**. And after
+LLM augmentation, quota by *all*-template count still drifts a couple of points, because
+the paraphrase yield is uneven after filtering — quota by **native** template count
+reproduces the original structure exactly (measured 47.1/20.4/14.7/11.9/5.9 vs
+47.1/20.5/14.7/11.9/5.8).
 
-The consequence is a hard three-way tradeoff -- non-neutral capacity is tiny
-(celebrate 1,193 vs neutral 480,077), so *10,000 clips + correct emotion mix + no text
-reuse* cannot hold at once:
+Without stage 0.5 there is a hard three-way tradeoff (non-neutral capacity is tiny:
+celebrate 1,193 vs neutral 480,077) — *10,000 clips + correct mix + no text reuse* cannot
+hold, and the best compromise is 2,000 texts at 2.0x reuse, multiplied out by
+`--refs-per-item 5`. Stage 0.5 dissolves the tradeoff: 10,000 unique texts at the correct
+mix, phrase reuse 1.6x.
 
-| want | get |
-|---|---|
-| correct mix, zero reuse | ~400 clips |
-| correct mix, 2.0x reuse | **2,000 clips (settled)** |
-| correct mix, 8.6x reuse | 10,000 clips |
-| zero reuse, any mix | 9,349 clips but 96% neutral |
+Two more requirements that do not fall out automatically:
 
-**When audio variety comes from many reference voices, keep the text set small.** With
-10,000 references, 2000 texts x `--refs-per-item 5` uses every reference exactly once and
-holds phrase reuse at 2.0x, versus 8.6x for a 10,000-text set. Reuse grows slowly from
-400->4000 clips (1.4x->2.5x) because neutral capacity is ample; it only explodes at 10,000.
+- **"Include every native template" needs an explicit walk order.** Proportional quotas
+  alone covered only 33.6% of the native templates. Fix: per group, keep a
+  `native_pending` set and put those templates first in each clip's walk; then shuffle the
+  chosen lines (natives-first would otherwise front-load them, and the previous sorted
+  walk clustered same-prefix paraphrases: "A natural! A natural! A natural...").
+- **Values differ WITHIN a clip** (a dealer_stands clip can say "20... 21... 19"), because
+  each line's placeholders were filled independently at stage 1. Fine for voice/prosody
+  training — flag it to the user rather than silently accepting it.
 
 ---
 
@@ -151,6 +195,20 @@ them, measure the distribution before deciding whether to normalize all or just 
 
 `--refs-per-item K` renders each text with K different voices, assigning
 `refs[i*K + j]`, so `len(refs) == n_texts * K` consumes each reference exactly once.
+**The index must be assigned before sharding**: the fallback (the loop counter) is a
+per-shard index, so with 8 shards every shard reused refs[0:1250] and 8,750 references
+were never touched. Verify from the manifests: distinct-reference count == reference-file
+count, min uses == max uses == K/n ratio.
+
+### Long background jobs: `nohup` is NOT enough
+
+Twice in this project a multi-hour run silently died mid-flight with no traceback: the
+harness's Bash-tool timeout kills the whole process group, and `nohup` only blocks
+SIGHUP. The signature is workers all dying at the same wall-clock moment with logs that
+just stop. Launch as
+`setsid env CUDA_VISIBLE_DEVICES=$G nohup python ... < /dev/null >> log 2>&1 &`
+so each worker is its own session — verified to survive even the parent CLI process
+exiting. Keep the launcher call itself fast; put waiting in a separate monitor command.
 
 ---
 

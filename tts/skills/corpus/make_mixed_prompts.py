@@ -18,7 +18,7 @@ emitted vector is the group median.
 
 Templates are reused ACROSS clips (with different placeholder values), never within one.
 """
-import argparse, collections, json, os
+import argparse, collections, json, os, random
 
 import numpy as np
 
@@ -33,12 +33,13 @@ TOKEN_BUDGET_WORDS = 70
 
 
 def template_index(filled):
-    """id -> the template a line came from (its own text when it had no placeholders)."""
+    """id -> (template text, origin). Origin tells native lines from paraphrases."""
     out = {}
     for pn, situs in filled["phases"].items():
         for sn, s in situs.items():
             for i, p in enumerate(s["phrases"]):
-                out[f"{pn}.{sn}.{i:04d}"] = p.get("text_template", p["text"])
+                out[f"{pn}.{sn}.{i:04d}"] = (p.get("text_template", p["text"]),
+                                             p.get("origin", "native"))
     return out
 
 
@@ -79,7 +80,14 @@ def main():
     # clips against 47% of the templates. Template count reflects how the phrase bank was
     # actually written, so that is the mix worth reproducing. The cost is that non-neutral
     # groups run out of distinct phrases and reuse them across clips (never within one).
-    tmpl_count = {k: len({tmpl.get(x["id"], x["text"]) for x in v}) for k, v in groups.items()}
+    # Quota basis = NATIVE template count. Counting all templates lets the paraphrase
+    # yield (uneven after filtering) skew the mix by a couple of points; native counts
+    # reproduce the original bank's structure exactly.
+    def is_native(x):
+        return tmpl.get(x["id"], ("", "native"))[1] == "native"
+    tmpl_count = {k: len({tmpl.get(x["id"], (x["text"], "native"))[0]
+                          for x in v if is_native(x)}) or 1
+                  for k, v in groups.items()}
     quota = {}
     if a.target_clips:
         total = sum(tmpl_count.values())
@@ -103,8 +111,11 @@ def main():
         # bucket by template so a clip can take one line from each
         by_tmpl = collections.defaultdict(list)
         for it in members:
-            by_tmpl[tmpl.get(it["id"], it["text"])].append(it)
+            by_tmpl[tmpl.get(it["id"], (it["text"],"native"))[0]].append(it)
         tmpl_names = sorted(by_tmpl)
+        native_tmpls = {t for t, v in by_tmpl.items()
+                        if any(is_native(x) for x in v)}
+        native_pending = set(native_tmpls)           # natives not yet in any clip
         cursor = {t: 0 for t in tmpl_names}          # rotate variants across clips
         if a.no_reuse:                               # each bucket becomes a consumable queue
             pool = {t: list(v) for t, v in by_tmpl.items()}
@@ -114,8 +125,13 @@ def main():
         t_start = 0
         for c in range(n_clips):
             chosen, words, used_tmpl = [], 0, set()
-            # walk templates round-robin, starting at a rotating offset for variety
-            order = tmpl_names[t_start:] + tmpl_names[:t_start]
+            rng = random.Random(hash((key, c)) & 0xffffffff)
+            # Not-yet-used NATIVE templates come first, so every native line lands in some
+            # clip (the first pass covered only 33.6% of them); the rest is shuffled --
+            # sorted order clustered same-prefix paraphrases ("A natural! A natural! ...").
+            pend = sorted(native_pending); rng.shuffle(pend)
+            rest = [t for t in tmpl_names if t not in native_pending]; rng.shuffle(rest)
+            order = pend + rest
             for t in order:
                 if words >= a.target_words:
                     break
@@ -130,6 +146,7 @@ def main():
                     it = bucket[cursor[t] % len(bucket)]
                     cursor[t] += 1
                 used_tmpl.add(t)
+                native_pending.discard(t)
                 chosen.append(it)
                 words += len(it["text"].split())
             fallback = None
@@ -160,6 +177,7 @@ def main():
                     words -= len(chosen[-1]["text"].split())
                     chosen.pop()
 
+            rng.shuffle(chosen)
             text = " ".join(x["text"] for x in chosen)
             evs = np.array([x["infer_kwargs"].get("emo_vector", [0.0] * 8) for x in chosen])
             dfs = collections.Counter(x["infer_kwargs"]["duration_factor"] for x in chosen)
@@ -181,6 +199,7 @@ def main():
                     "emotion_class": chosen[0]["source"].get("emotion_class", "neutral"),
                     "n_lines": len(chosen),
                     "n_distinct_templates": len(used_tmpl),
+                    "n_native_lines": sum(1 for x in chosen if is_native(x)),
                     "words": words,
                     "line_ids": [x["id"] for x in chosen],
                     "fallback": fallback,
